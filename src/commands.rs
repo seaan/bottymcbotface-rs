@@ -75,3 +75,10 @@ pub async fn getvotes(
 
     Ok(())
 }
+
+/// Respond with an orange
+#[poise::command(slash_command, prefix_command)]
+async fn orange(ctx: Context<'_>) -> Result<(), Error> {
+    ctx.say("🍊").await?;
+    Ok(())
+}
