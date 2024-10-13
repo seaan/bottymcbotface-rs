@@ -1,6 +1,7 @@
 #![warn(clippy::str_to_string)]
 
 mod commands;
+use dotenv::dotenv;
 
 use poise::serenity_prelude as serenity;
 use std::{
@@ -9,6 +10,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
+use log::error;
 
 // Types used by all command functions
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -26,11 +28,11 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     match error {
         poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
         poise::FrameworkError::Command { error, ctx, .. } => {
-            println!("Error in command `{}`: {:?}", ctx.command().name, error,);
+            error!("Error in command `{}`: {:?}", ctx.command().name, error,);
         }
         error => {
             if let Err(e) = poise::builtins::on_error(error).await {
-                println!("Error while handling error: {}", e)
+                error!("Error while handling error: {}", e)
             }
         }
     }
@@ -45,8 +47,6 @@ async fn main() {
     let options = poise::FrameworkOptions {
         commands: vec![
             commands::help(),
-            commands::vote(),
-            commands::getvotes(),
             commands::orange(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
@@ -111,8 +111,9 @@ async fn main() {
         .options(options)
         .build();
 
+    dotenv().ok();
     let token = var("DISCORD_TOKEN")
-        .expect("Missing `DISCORD_TOKEN` env var, see README for more information.");
+        .expect("Missing `DISCORD_TOKEN` env var, see README for more printlnrmation.");
     let intents =
         serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT;
 
