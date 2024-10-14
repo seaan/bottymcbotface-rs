@@ -1,26 +1,20 @@
 #![warn(clippy::str_to_string)]
 
 mod commands;
-mod onmessage;
-use onmessage::mentionme::RobotQuotes;
+mod data;
+mod events;
 
-use log::{debug, error, info};
+use log::{error, info};
 use poise::serenity_prelude as serenity;
 use std::{env::var, sync::Arc, time::Duration};
-use tokio::sync::Mutex;
 use tracing::instrument;
 
 // Types used by all command functions
 type Error = Box<dyn std::error::Error + Send + Sync>;
-type Context<'a> = poise::Context<'a, Data, Error>;
-
-// Custom user data passed to all command functions
-pub struct Data {
-    quotes_for_response: Mutex<RobotQuotes>,
-}
+type Context<'a> = poise::Context<'a, data::Data, Error>;
 
 #[instrument(skip(error))]
-async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
+async fn on_error(error: poise::FrameworkError<'_, data::Data, Error>) {
     // This is our custom error handler
     // They are many errors that can occur, so we only handle the ones we want to customize
     // and forward the rest to the default handler
@@ -94,21 +88,8 @@ async fn main() {
         skip_checks_for_owners: false,
         event_handler: |ctx, event, _framework, data| {
             Box::pin(async move {
-                debug!(
-                    "Got an event in event handler: {:?}",
-                    event.snake_case_name()
-                );
-
-                if let serenity::FullEvent::Message { new_message } = event {
-                    if let Err(why) = onmessage::handle_message_event(
-                        ctx.clone(),
-                        new_message.clone(),
-                        &data.quotes_for_response,
-                    )
-                    .await
-                    {
-                        error!("Failed to handle message: {:?}", why);
-                    }
+                if let Err(why) = events::handle_event(ctx.clone(), event.clone(), data).await {
+                    error!("Error handling event: {:?}", why);
                 }
                 Ok(())
             })
@@ -121,9 +102,7 @@ async fn main() {
             Box::pin(async move {
                 println!("Logged in as {}", _ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(Data {
-                    quotes_for_response: Mutex::new(RobotQuotes::new()),
-                })
+                Ok(data::Data::new())
             })
         })
         .options(options)
