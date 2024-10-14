@@ -22,7 +22,7 @@ pub async fn handle_event(
         let mut quotes_guard = data.quotes_for_response.lock().await;
 
         if let Err(why) =
-            handle_message_event(ctx.clone(), new_message.clone(), &mut *quotes_guard).await
+            handle_message_event(ctx.clone(), new_message.clone(), &mut quotes_guard).await
         {
             error!("Failed to handle message: {:?}", why);
         }
