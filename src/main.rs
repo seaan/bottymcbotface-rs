@@ -1,16 +1,16 @@
 #![warn(clippy::str_to_string)]
 
 mod commands;
-use dotenv::dotenv;
 
 use poise::serenity_prelude as serenity;
+use tracing::instrument;
 use std::{
     collections::HashMap,
     env::var,
     sync::{Arc, Mutex},
     time::Duration,
 };
-use log::error;
+use log::{error, info, debug};
 
 // Types used by all command functions
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -18,9 +18,10 @@ type Context<'a> = poise::Context<'a, Data, Error>;
 
 // Custom user data passed to all command functions
 pub struct Data {
-    votes: Mutex<HashMap<String, u32>>,
+    _votes: Mutex<HashMap<String, u32>>,
 }
 
+#[instrument(skip(error))]
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     // This is our custom error handler
     // They are many errors that can occur, so we only handle the ones we want to customize
@@ -39,8 +40,19 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
 }
 
 #[tokio::main]
+#[instrument]
 async fn main() {
-    env_logger::init();
+     // This will load the environment variables located at `./.env`, relative to the CWD.
+    // See `./.env.example` for an example on how to structure this.
+    dotenv::dotenv().expect("Failed to load .env file");
+
+    // Initialize the logger to use environment variables.
+    //
+    // In this case, a good default is setting the environment variable `RUST_LOG` to `debug`.
+    tracing_subscriber::fmt::init();
+
+    let token = var("DISCORD_TOKEN")
+        .expect("Missing `DISCORD_TOKEN` env var, see README for more information.");
 
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
@@ -65,13 +77,13 @@ async fn main() {
         // This code is run before every command
         pre_command: |ctx| {
             Box::pin(async move {
-                println!("Executing command {}...", ctx.command().qualified_name);
+                info!("Executing command {}...", ctx.command().qualified_name);
             })
         },
         // This code is run after a command if it was successful (returned Ok)
         post_command: |ctx| {
             Box::pin(async move {
-                println!("Executed command {}!", ctx.command().qualified_name);
+                info!("Executed command {}!", ctx.command().qualified_name);
             })
         },
         // Every command invocation must pass this check to continue execution
@@ -88,7 +100,7 @@ async fn main() {
         skip_checks_for_owners: false,
         event_handler: |_ctx, event, _framework, _data| {
             Box::pin(async move {
-                println!(
+                debug!(
                     "Got an event in event handler: {:?}",
                     event.snake_case_name()
                 );
@@ -104,16 +116,13 @@ async fn main() {
                 println!("Logged in as {}", _ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(Data {
-                    votes: Mutex::new(HashMap::new()),
+                    _votes: Mutex::new(HashMap::new()),
                 })
             })
         })
         .options(options)
         .build();
 
-    dotenv().ok();
-    let token = var("DISCORD_TOKEN")
-        .expect("Missing `DISCORD_TOKEN` env var, see README for more printlnrmation.");
     let intents =
         serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT;
 

@@ -16,3 +16,5 @@ poise = { version = "*" }
 env_logger = { version = "*"}
 log = "*"
 dotenv = "0.15.0"
+tracing = "0.1.23"
+tracing-subscriber = "0.3"
