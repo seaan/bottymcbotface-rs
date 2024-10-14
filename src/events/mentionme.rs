@@ -1,6 +1,7 @@
 use std::fs;
 
 use crate::Error;
+use log::info;
 use poise::serenity_prelude as serenity;
 
 use rand::seq::SliceRandom;
@@ -11,6 +12,8 @@ pub async fn handle_mention_event(
     msg: serenity::Message,
     quotes_for_response: &mut RobotQuotes,
 ) -> Result<(), Error> {
+    info!("Responding to direct mention with quote");
+
     match quotes_for_response.get_quote().await? {
         Some(quote) => {
             msg.channel_id.say(&ctx.http, quote).await?;
