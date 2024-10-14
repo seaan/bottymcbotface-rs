@@ -42,7 +42,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
 #[tokio::main]
 #[instrument]
 async fn main() {
-     // This will load the environment variables located at `./.env`, relative to the CWD.
+    // This will load the environment variables located at `./.env`, relative to the CWD.
     // See `./.env.example` for an example on how to structure this.
     dotenv::dotenv().expect("Failed to load .env file");
 
