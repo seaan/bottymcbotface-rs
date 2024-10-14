@@ -1,16 +1,14 @@
 #![warn(clippy::str_to_string)]
 
 mod commands;
+mod onmessage;
+use onmessage::mentionme::RobotQuotes;
 
+use log::{debug, error, info};
 use poise::serenity_prelude as serenity;
+use std::{env::var, sync::Arc, time::Duration};
+use tokio::sync::Mutex;
 use tracing::instrument;
-use std::{
-    collections::HashMap,
-    env::var,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
-use log::{error, info, debug};
 
 // Types used by all command functions
 type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -18,7 +16,7 @@ type Context<'a> = poise::Context<'a, Data, Error>;
 
 // Custom user data passed to all command functions
 pub struct Data {
-    _votes: Mutex<HashMap<String, u32>>,
+    quotes_for_response: Mutex<RobotQuotes>,
 }
 
 #[instrument(skip(error))]
@@ -57,12 +55,8 @@ async fn main() {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions {
-        commands: vec![
-            commands::help(),
-            commands::orange(),
-        ],
+        commands: vec![commands::help(), commands::orange()],
         prefix_options: poise::PrefixFrameworkOptions {
-            prefix: Some("~".into()),
             edit_tracker: Some(Arc::new(poise::EditTracker::for_timespan(
                 Duration::from_secs(3600),
             ))),
@@ -98,12 +92,24 @@ async fn main() {
         // Enforce command checks even for owners (enforced by default)
         // Set to true to bypass checks, which is useful for testing
         skip_checks_for_owners: false,
-        event_handler: |_ctx, event, _framework, _data| {
+        event_handler: |ctx, event, _framework, data| {
             Box::pin(async move {
                 debug!(
                     "Got an event in event handler: {:?}",
                     event.snake_case_name()
                 );
+
+                if let serenity::FullEvent::Message { new_message } = event {
+                    if let Err(why) = onmessage::handle_message_event(
+                        ctx.clone(),
+                        new_message.clone(),
+                        &data.quotes_for_response,
+                    )
+                    .await
+                    {
+                        error!("Failed to handle message: {:?}", why);
+                    }
+                }
                 Ok(())
             })
         },
@@ -116,7 +122,7 @@ async fn main() {
                 println!("Logged in as {}", _ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(Data {
-                    _votes: Mutex::new(HashMap::new()),
+                    quotes_for_response: Mutex::new(RobotQuotes::new()),
                 })
             })
         })
