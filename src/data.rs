@@ -1,4 +1,4 @@
-pub mod reactions;
+pub mod bestof;
 
 use crate::events::mentionme::RobotQuotes;
 
