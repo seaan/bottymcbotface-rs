@@ -12,17 +12,14 @@ pub async fn handle_mention_event(
     msg: serenity::Message,
     quotes_for_response: &mut RobotQuotes,
 ) -> Result<(), Error> {
-    info!("Responding to direct mention with quote");
-
     match quotes_for_response.get_quote().await? {
         Some(quote) => {
+            info!("Responding to direct mention with quote {:?}", quote);
             msg.channel_id.say(&ctx.http, quote).await?;
+            Ok(())
         }
-        None => {
-            msg.channel_id.say(&ctx.http, "Hello there!").await?;
-        }
+        None => Err("Couldn't find a quote to respond with!".into()),
     }
-    Ok(())
 }
 
 pub struct RobotQuotes {
