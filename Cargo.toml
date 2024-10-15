@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 # Discord bot framework
-serenity = { version = "*", features = [
+serenity = { version = "=0.12.1", features = [
     "client",
     "gateway",
     "rustls_backend",
@@ -30,3 +30,5 @@ dotenv = "0.15.0"
 
 # Random number generation
 rand = "0.8.5"
+chrono = "0.4.38"
+futures = "0.3.31"

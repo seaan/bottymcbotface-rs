@@ -1,6 +1,7 @@
 mod commands;
 mod data;
 mod events;
+mod scheduled;
 
 use log::{error, info};
 use poise::serenity_prelude as serenity;
@@ -100,6 +101,8 @@ async fn main() {
             Box::pin(async move {
                 println!("Logged in as {}", _ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
+                scheduled::spawn_scheduled_tasks(ctx.clone());
+
                 Ok(data::Data::new())
             })
         })
