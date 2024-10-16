@@ -1,2 +1,15 @@
 {
+    "files.watcherExclude": {
+        "**/.git/objects/**": true, // default
+        "**/.git/subtree-cache/**": true, // default
+        "**/.hg/store/**": true, // default
+        "**/target/**": true,
+        "**/__pycache__/**": true,
+    },
+    "python.analysis.exclude": [
+        "**/node_modules",
+        "**/__pycache__",
+        ".git",
+        "**/build"
+    ], // avoid showing duplicates in Ctrl+T etc
 }
