@@ -101,9 +101,11 @@ async fn main() {
             Box::pin(async move {
                 println!("Logged in as {}", _ready.user.name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                scheduled::spawn_scheduled_tasks(ctx.clone());
 
-                Ok(data::Data::new())
+                let data = data::Data::new();
+                let _ =
+                    scheduled::spawn_scheduled_tasks(ctx.clone(), Arc::clone(&data.bestof)).await;
+                Ok(data)
             })
         })
         .options(options)

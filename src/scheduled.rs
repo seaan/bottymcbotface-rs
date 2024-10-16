@@ -1,21 +1,30 @@
 use crate::data::bestof::BestOf;
 
-use log::{error, info};
+use log::{error, info, warn};
 use poise::serenity_prelude as serenity;
-use tokio::time;
+use std::sync::Arc;
+use tokio::{sync::Mutex, time};
 
-pub fn spawn_scheduled_tasks(ctx: serenity::Context) {
+pub async fn spawn_scheduled_tasks(
+    ctx: serenity::Context,
+    bestof_db: Arc<Mutex<BestOf>>,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        reaction_counting_task(ctx).await;
-    });
+        reaction_counting_task(ctx, bestof_db).await;
+    })
 }
 
-async fn reaction_counting_task(ctx: serenity::Context) {
-    let mut db = BestOf::new();
-
+async fn reaction_counting_task(ctx: serenity::Context, bestof_db: Arc<Mutex<BestOf>>) {
     loop {
-        if let Err(why) = db.update(&ctx).await {
-            error!("Error running bestof update: {:?}", why);
+        {
+            match bestof_db.try_lock() {
+                Err(why) => warn!("Couldn't run scheduled update because of lock: {:?}", why),
+                Ok(mut db) => {
+                    if let Err(why) = db.update(&ctx).await {
+                        error!("Error running bestof update: {:?}", why);
+                    }
+                }
+            }
         }
 
         sleep_until_next_run().await;

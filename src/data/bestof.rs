@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 const MESSAGES_TO_CHECK: u8 = 50;
-const MINIMUM_REACTIONS: usize = 5;
+const MINIMUM_REACTIONS: u64 = 5;
 
 pub struct BestOf {
     runtime_db: HashMap<MessageId, Message>,
@@ -178,7 +178,7 @@ async fn trawl_messages_for_reactions(
 async fn get_reacted_messages(retrieved_messages: &mut Vec<Message>) -> Vec<Message> {
     let mut reacted_messages: Vec<Message> = Vec::new();
     for message in retrieved_messages.drain(..) {
-        match message_meets_criteria(message).await {
+        match message_meets_criteria(message) {
             None => continue,
             Some(message) => reacted_messages.push(message),
         }
@@ -186,17 +186,37 @@ async fn get_reacted_messages(retrieved_messages: &mut Vec<Message>) -> Vec<Mess
     reacted_messages
 }
 
-async fn message_meets_criteria(message: Message) -> Option<Message> {
-    if message.author.bot || message.reactions.len() < MINIMUM_REACTIONS {
+fn message_meets_criteria(message: Message) -> Option<Message> {
+    if message.author.bot
+        || message.reactions.len() < 1
+        || number_of_users_reacted(&message) < MINIMUM_REACTIONS
+    {
         return None;
     }
 
     debug!(
-        "Found message with {MINIMUM_REACTIONS} or more reactions: {:#?}",
+        "Found message with {MINIMUM_REACTIONS} or more on a single reaction: {:#?}",
         message
     );
 
     return Some(message);
+}
+
+/// Takes a Message and extracts the highest count reaction.
+fn number_of_users_reacted(message: &Message) -> u64 {
+    let mut highest_count: u64 = 0;
+
+    // Iterate over each reaction
+    for reaction in &message.reactions {
+        // Fetch the current reaction count
+        let current_reaction_count = reaction.count;
+
+        if highest_count < current_reaction_count {
+            highest_count = current_reaction_count;
+        }
+    }
+
+    highest_count
 }
 
 async fn post_update(
@@ -259,8 +279,19 @@ fn create_embed(
         "{}\n\n-----\n[Link]({})\n*Total Number of Reactions:* {}",
         message.content,
         message.link(),
-        message.reactions.len()
+        total_number_of_reactions(message),
     ));
 
     Ok(embed)
+}
+
+/// Takes a Message and extracts the total count of reactions.
+fn total_number_of_reactions(message: &Message) -> u64 {
+    let mut total: u64 = 0;
+
+    for reaction in &message.reactions {
+        total += reaction.count;
+    }
+
+    total
 }

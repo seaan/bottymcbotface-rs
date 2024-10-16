@@ -32,4 +32,3 @@ pub async fn orange(
     ctx.say("🍊").await?;
     Ok(())
 }
-    
