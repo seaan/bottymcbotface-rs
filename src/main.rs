@@ -102,6 +102,8 @@ async fn main() {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
 
                 let data = data::Data::new();
+                data.db.lock().await.run_migration().await?;
+
                 let _ =
                     scheduled::spawn_scheduled_tasks(ctx.clone(), Arc::clone(&data.bestof)).await;
                 Ok(data)
