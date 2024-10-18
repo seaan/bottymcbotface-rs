@@ -15,10 +15,11 @@ pub struct Data {
 
 impl Data {
     pub fn new() -> Data {
+        let db = Arc::new(Mutex::new(db::BotDatabase::new()));
         Data {
-            db: Arc::new(Mutex::new(db::BotDatabase::new())),
+            db: db.clone(),
             quotes_for_response: Mutex::new(RobotQuotes::new()),
-            bestof: Arc::new(Mutex::new(bestof::BestOf::new())),
+            bestof: Arc::new(Mutex::new(bestof::BestOf::new(Arc::clone(&db)))),
         }
     }
 }

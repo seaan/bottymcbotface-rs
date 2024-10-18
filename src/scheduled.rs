@@ -1,39 +1,73 @@
+use crate::data::db::BotDatabase;
 use crate::data::bestof::BestOf;
 
-use log::{error, info, warn};
+use log::{info, warn};
 use poise::serenity_prelude as serenity;
 use std::sync::Arc;
 use tokio::{sync::Mutex, time};
 
 pub async fn spawn_scheduled_tasks(
     ctx: serenity::Context,
-    bestof_db: Arc<Mutex<BestOf>>,
+    db: Arc<Mutex<BotDatabase>>,
+    bestof: Arc<Mutex<BestOf>>,
 ) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        reaction_counting_task(ctx, bestof_db).await;
-    })
+    // Spawn the reaction counting task
+    tokio::spawn(reaction_counting_task(ctx.clone(), bestof.clone()));
+
+    // Spawn the persistent database update task
+    tokio::spawn(persistent_database_update_task(ctx, db, bestof))
 }
 
-async fn reaction_counting_task(ctx: serenity::Context, bestof_db: Arc<Mutex<BestOf>>) {
+async fn reaction_counting_task(ctx: serenity::Context, bestof: Arc<Mutex<BestOf>>) {
     loop {
-        {
-            match bestof_db.try_lock() {
-                Err(why) => warn!("Couldn't run scheduled update because of lock: {:?}", why),
-                Ok(mut db) => {
-                    if let Err(why) = db.update(&ctx).await {
-                        error!("Error running bestof update: {:?}", why);
-                    }
-                }
-            }
+        if let Err(why) = update_bestof_runtime_db(&ctx, &bestof).await {
+            warn!("Failed to update bestof runtime data: {:?}", why);
         }
 
-        sleep_until_next_run().await;
+        let sleep_duration = std::time::Duration::from_secs(600);
+        info!("Next counting reactions after {:?}", sleep_duration);
+        time::sleep(sleep_duration).await;
     }
 }
 
-async fn sleep_until_next_run() {
-    let sleep_duration = std::time::Duration::from_secs(600);
-    info!("Next counting reactions after {:?}", sleep_duration);
-    // Sleep until the next scheduled run
-    time::sleep(sleep_duration).await;
+async fn update_bestof_runtime_db(
+    ctx: &serenity::Context,
+    bestof: &Arc<Mutex<BestOf>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut bestof_unlocked = acquire_lock(bestof).map_err(|e| format!("bestof lock error: {:?}", e))?;
+    
+    bestof_unlocked.update(ctx).await?;
+    Ok(())
+}
+
+async fn persistent_database_update_task(
+    ctx: serenity::Context,
+    db: Arc<Mutex<BotDatabase>>,
+    bestof: Arc<Mutex<BestOf>>,
+) {
+    loop {
+        if let Err(why) = update_bestof_persisted_db(&ctx, &db, &bestof).await {
+            warn!("Failed to persist bestof data: {:?}", why);
+        }
+
+        let sleep_duration = std::time::Duration::from_secs(600);
+        info!("Next reaction counting after {:?}", sleep_duration);
+        time::sleep(sleep_duration).await;
+    }
+}
+
+async fn update_bestof_persisted_db(
+    ctx: &serenity::Context,
+    db: &Arc<Mutex<BotDatabase>>,
+    bestof: &Arc<Mutex<BestOf>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut bestof_unlocked = acquire_lock(bestof).map_err(|e| format!("bestof lock error: {:?}", e))?;
+    let mut db_unlocked = acquire_lock(db).map_err(|e| format!("db lock error: {:?}", e))?;
+    
+    bestof_unlocked.update_persisted_db(db_unlocked).await?;
+    Ok(())
+}
+
+fn acquire_lock<T>(lock: &Arc<Mutex<T>>) -> Result<tokio::sync::MutexGuard<'_, T>, String> {
+    lock.try_lock().map_err(|_| "Couldn't acquire lock".to_string())
 }

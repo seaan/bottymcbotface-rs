@@ -1,8 +1,11 @@
+use crate::data::db;
+
 use std::collections::{HashMap, HashSet};
 
 use log::{debug, error, info, warn};
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{ChannelId, Context, Message, MessageId};
+use ::serenity::all::PermissionOverwrite;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -14,7 +17,7 @@ pub struct BestOf {
 }
 
 impl BestOf {
-    pub fn new() -> BestOf {
+    pub fn new(persist_db: Arc<Mutex<db::BotDatabase>>) -> BestOf {
         BestOf {
             runtime_db: HashMap::new(),
         }
@@ -85,6 +88,12 @@ impl BestOf {
         }
 
         Ok(new_messages_for_channel)
+    }
+
+    /// Call to update the persistent database from the runtime db.
+    pub async fn update_persisted_db(_persist_db: db::BotDatabase) -> Result<(), Box<dyn std::error::Error>> {
+        // to be done
+        Ok(())
     }
 }
 
