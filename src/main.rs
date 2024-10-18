@@ -42,8 +42,7 @@ async fn main() {
     // In this case, a good default is setting the environment variable `RUST_LOG` to `debug`.
     tracing_subscriber::fmt::init();
 
-    let token = var("DISCORD_TOKEN")
-        .expect("Missing `DISCORD_TOKEN` env var, see README for more information.");
+    let token = var("DISCORD_TOKEN").expect("Missing `DISCORD_TOKEN` env var.");
 
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value

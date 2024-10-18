@@ -1,4 +1,5 @@
 pub mod bestof;
+pub mod db;
 
 use crate::events::mentionme::RobotQuotes;
 
@@ -7,6 +8,7 @@ use tokio::sync::Mutex;
 
 // Custom user data passed to all command functions
 pub struct Data {
+    pub db: Arc<Mutex<db::BotDatabase>>,
     pub quotes_for_response: Mutex<RobotQuotes>,
     pub bestof: Arc<Mutex<bestof::BestOf>>,
 }
@@ -14,6 +16,7 @@ pub struct Data {
 impl Data {
     pub fn new() -> Data {
         Data {
+            db: Arc::new(Mutex::new(db::BotDatabase::new())),
             quotes_for_response: Mutex::new(RobotQuotes::new()),
             bestof: Arc::new(Mutex::new(bestof::BestOf::new())),
         }
