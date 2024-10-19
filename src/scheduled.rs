@@ -1,6 +1,7 @@
 use crate::data::bestof::BestOf;
 use crate::data::db::BotDatabase;
 
+use chrono::{Duration as ChronoDuration, Utc};
 use log::{error, info, warn};
 use poise::serenity_prelude as serenity;
 use std::sync::Arc;
@@ -41,13 +42,26 @@ async fn load_from_database(
 
 async fn daily_bestof_task(ctx: serenity::Context, bestof: Arc<Mutex<BestOf>>) {
     loop {
+        // Calculate the duration until the next 9 AM
+        let now = Utc::now();
+        let next_9am = now.date().and_hms(9, 0, 0);
+        let duration_until_next_9am = if now.time() < next_9am.time() {
+            next_9am - now
+        } else {
+            next_9am + ChronoDuration::days(1) - now
+        };
+
+        // Sleep until the next 9 AM
+        let sleep_duration = duration_until_next_9am
+            .to_std()
+            .unwrap_or_else(|_| Duration::from_secs(86400));
+        info!("Next posting at 9 AM, sleeping for {:?}", sleep_duration);
+        sleep(sleep_duration).await;
+
+        // Post the daily bestof
         if let Err(why) = post_daily_bestof(&ctx, &bestof).await {
             warn!("Failed to post daily bestof: {:?}", why);
         }
-
-        let sleep_duration = Duration::from_secs(86400);
-        info!("Next posting after {:?}", sleep_duration);
-        sleep(sleep_duration).await;
     }
 }
 

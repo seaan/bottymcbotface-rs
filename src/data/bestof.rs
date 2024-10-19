@@ -12,7 +12,7 @@ use sqlx::FromRow;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-const MESSAGES_TO_CHECK: u8 = 50;
+const MESSAGES_TO_CHECK: u8 = 100;
 const MINIMUM_REACTIONS: u64 = 5;
 
 #[derive(FromRow, Debug, Clone)]
@@ -53,14 +53,12 @@ impl BestOfMessage {
 
 pub struct BestOf {
     runtime_db: HashMap<i64, BestOfMessage>,
-    runtime_counts: u64,
 }
 
 impl BestOf {
     pub fn new() -> BestOf {
         BestOf {
             runtime_db: HashMap::new(),
-            runtime_counts: 0,
         }
     }
 
@@ -77,9 +75,7 @@ impl BestOf {
             .update_runtime_db_from_new_bestof(ctx, &mut current_messages)
             .await?;
 
-        if self.runtime_counts > 0 {
-            post_update(ctx, new_messages).await?;
-        }
+        post_update(ctx, new_messages).await?;
 
         Ok(())
     }
