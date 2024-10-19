@@ -9,7 +9,6 @@ pub async fn help(
     #[autocomplete = "poise::builtins::autocomplete_command"]
     command: Option<String>,
 ) -> Result<(), Error> {
-    poise::builtins::register_globally(ctx, &ctx.framework().options().commands).await?;
     poise::builtins::help(
         ctx,
         command.as_deref(),
