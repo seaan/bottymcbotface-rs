@@ -12,4 +12,18 @@
         ".git",
         "**/build"
     ], // avoid showing duplicates in Ctrl+T etc
+    "rust-analyzer.check.overrideCommand": [
+        "cargo",
+        "clippy",
+        "--fix",
+        "--workspace",
+        "--message-format=json",
+        "--all-targets",
+        "--allow-dirty"
+    ],
+    "[rust]": {
+        "editor.defaultFormatter": "rust-lang.rust-analyzer",
+        "editor.formatOnSave": true,
+        "editor.formatOnSaveMode": "file"
+    },
 }
