@@ -1,14 +1,14 @@
 use crate::data::db;
 
-use std::collections::{HashMap, HashSet};
-
 use log::{debug, info, warn};
 use poise::serenity_prelude as serenity;
-use poise::serenity_prelude::{ChannelId, Context, Message};
+use poise::serenity_prelude::{ChannelId, Context, Message, MessageId};
 use rand::rngs::{OsRng, StdRng};
 use rand::seq::IteratorRandom;
 use rand::SeedableRng;
 use sqlx::FromRow;
+use std::collections::{HashMap, HashSet};
+use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -31,7 +31,7 @@ impl BestOfMessage {
     pub async fn from_serenity_message(
         message: &serenity::Message,
         ctx: &serenity::Context,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self, Box<dyn Error>> {
         let channel_name = match message.channel_id.to_channel(ctx).await? {
             serenity::Channel::Guild(channel) => channel.name.clone(),
             serenity::Channel::Private(_) => "Private Channel".to_string(),
@@ -67,10 +67,12 @@ impl BestOf {
     pub async fn search_and_add_new_bestof(
         &mut self,
         ctx: &Context,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+        recursive_search: bool,
+    ) -> Result<(), Box<dyn Error>> {
         info!("Starting reaction counting..");
 
-        let mut current_messages = count_current_reactions_across_channels(ctx).await?;
+        let mut current_messages =
+            count_current_reactions_across_channels(ctx, recursive_search).await?;
         let new_messages = self
             .update_runtime_db_from_new_bestof(ctx, &mut current_messages)
             .await?;
@@ -85,7 +87,7 @@ impl BestOf {
         &mut self,
         ctx: &Context,
         current_messages: &mut HashMap<ChannelId, Vec<Message>>,
-    ) -> Result<Vec<BestOfMessage>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<BestOfMessage>, Box<dyn Error>> {
         let mut new_messages = Vec::new();
 
         for (channel_id, mut messages) in current_messages.drain() {
@@ -112,7 +114,7 @@ impl BestOf {
         &mut self,
         ctx: &Context,
         messages: &mut Vec<Message>,
-    ) -> Result<Vec<BestOfMessage>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<BestOfMessage>, Box<dyn Error>> {
         let mut new_messages_for_channel = Vec::new();
 
         for msg in messages.drain(..) {
@@ -142,7 +144,7 @@ impl BestOf {
     pub async fn load_from_persisted_db(
         &mut self,
         persist_db: &mut db::BotDatabase,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn Error>> {
         let messages: Vec<BestOfMessage> = persist_db
             .load_all_from_table(String::from("messages"))
             .await?;
@@ -158,7 +160,7 @@ impl BestOf {
     pub async fn update_persisted_db(
         &mut self,
         persist_db: &mut db::BotDatabase,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn Error>> {
         let db_conn = persist_db.get_conn();
 
         // upsert all messages in runtime_db into the persisted database
@@ -189,12 +191,13 @@ impl BestOf {
         Ok(())
     }
 
+    /// Post a random message from the runtime db to a channel.
     pub async fn post_random(
         &mut self,
         ctx: &Context,
         channel_to_post_in: ChannelId,
         prelude: Option<String>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut rng = StdRng::from_rng(OsRng)?;
 
         // Use choose to randomly pick a message from runtime_db
@@ -208,9 +211,12 @@ impl BestOf {
     }
 }
 
+/// Count the current reactions across all channels, with one thread
+/// per channel.
 async fn count_current_reactions_across_channels(
     ctx: &Context,
-) -> Result<HashMap<ChannelId, Vec<Message>>, Box<dyn std::error::Error>> {
+    recursive_search: bool,
+) -> Result<HashMap<ChannelId, Vec<Message>>, Box<dyn Error>> {
     let thicc_guild = serenity::GuildId::new(561602796286378029);
 
     let reacted_messages_per_channel = Arc::new(Mutex::new(HashMap::new()));
@@ -231,7 +237,7 @@ async fn count_current_reactions_across_channels(
             let ctx = ctx.clone();
             let reacted_messages_per_channel = Arc::clone(&reacted_messages_per_channel);
             tokio::spawn(async move {
-                match parse_reactions_from_channel(&ctx, channel_id).await {
+                match parse_reactions_from_channel(&ctx, channel_id, recursive_search).await {
                     Err(why) => {
                         warn!("Failed to search channel {channel_id}: {:#?}", why);
                     }
@@ -264,27 +270,32 @@ async fn count_current_reactions_across_channels(
     Ok(list_of_messages.clone())
 }
 
+/// Parse reactions from a channel.
 async fn parse_reactions_from_channel(
     ctx: &Context,
     channel_id: ChannelId,
-) -> Result<Option<Vec<Message>>, Box<dyn std::error::Error + Send + Sync>> {
+    recursive_search: bool,
+) -> Result<Option<Vec<Message>>, Box<dyn Error + Send + Sync>> {
     match channel_id.to_channel(&ctx.http).await?.guild() {
         None => Ok(None), // not a guild channel, just pass
-        Some(channel) => Ok(Some(trawl_messages_for_reactions(ctx, channel).await?)),
+        Some(channel) => Ok(Some(
+            trawl_messages_for_reactions(ctx, channel, recursive_search).await?,
+        )),
     }
 }
 
+/// Trawl through messages in a channel and return those that meet the criteria.
 async fn trawl_messages_for_reactions(
     ctx: &Context,
     channel: serenity::GuildChannel,
-) -> Result<Vec<Message>, Box<dyn std::error::Error + Send + Sync>> {
+    recursive_search: bool,
+) -> Result<Vec<Message>, Box<dyn Error + Send + Sync>> {
     debug!(
         "Channel ID: {:?}, Channel Name: {:?}",
         channel.id, channel.name
     );
-    let builder = serenity::GetMessages::new().limit(MESSAGES_TO_CHECK);
 
-    match channel.id.messages(&ctx.http, builder).await {
+    match retrieve_messages(ctx, channel, recursive_search).await {
         Ok(mut retrieved_messages) => Ok(get_reacted_messages(&mut retrieved_messages).await),
         Err(why) => {
             warn!("Failed to retrieve messages: {:#?}", why);
@@ -293,6 +304,57 @@ async fn trawl_messages_for_reactions(
     }
 }
 
+/// Retrieve messages from a channel.
+async fn retrieve_messages(
+    ctx: &Context,
+    channel: serenity::GuildChannel,
+    recursive_search: bool,
+) -> Result<Vec<Message>, serenity::Error> {
+    let mut all_messages: Vec<Message> = Vec::new();
+    let mut before: Option<MessageId> = None;
+
+    loop {
+        let mut messages = get_message_batch(ctx, channel.clone(), before).await?;
+
+        if messages.is_empty() {
+            break;
+        }
+
+        all_messages.append(&mut messages);
+
+        if recursive_search {
+            before = Some(all_messages.last().unwrap().id);
+        } else {
+            break;
+        }
+    }
+
+    Ok(all_messages)
+}
+
+/// Retrieve a batch of messages from a channel.
+async fn get_message_batch(
+    ctx: &Context,
+    channel: serenity::GuildChannel,
+    before: Option<MessageId>,
+) -> Result<Vec<Message>, serenity::Error> {
+    match before {
+        Some(search_from) => {
+            let builder = serenity::GetMessages::new()
+                .limit(MESSAGES_TO_CHECK)
+                .before(search_from);
+
+            channel.id.messages(&ctx.http, builder).await
+        }
+        None => {
+            let builder = serenity::GetMessages::new().limit(MESSAGES_TO_CHECK);
+
+            channel.id.messages(&ctx.http, builder).await
+        }
+    }
+}
+
+/// Filter messages that meet the criteria.
 async fn get_reacted_messages(retrieved_messages: &mut Vec<Message>) -> Vec<Message> {
     let mut reacted_messages: Vec<Message> = Vec::new();
     for message in retrieved_messages.drain(..) {
@@ -304,6 +366,7 @@ async fn get_reacted_messages(retrieved_messages: &mut Vec<Message>) -> Vec<Mess
     reacted_messages
 }
 
+/// Check if a message meets the criteria.
 fn message_meets_criteria(message: Message) -> Option<Message> {
     if message.author.bot
         || message.reactions.is_empty()
@@ -337,11 +400,11 @@ fn number_of_users_reacted(message: &Message) -> u64 {
     highest_count
 }
 
+/// Post an update to the channel.
 async fn post_update(
     ctx: &Context,
     new_messages: Vec<BestOfMessage>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Handle sending the message and propagate any error that occurs
+) -> Result<(), Box<dyn Error>> {
     let update_channel = ChannelId::new(563105728341082148); // DM for now
 
     for msg in new_messages {
@@ -361,12 +424,13 @@ async fn post_update(
     Ok(())
 }
 
+/// Post a message as an embed to a channel.
 pub async fn post_message_as_embed(
     ctx: &Context,
     message: &BestOfMessage,
     channel_to_post_to: ChannelId,
     prelude: Option<String>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(), Box<dyn Error + Send + Sync>> {
     let embed = create_embed(message)?;
     let mut msg = serenity::CreateMessage::new().embed(embed);
 
@@ -379,9 +443,10 @@ pub async fn post_message_as_embed(
     Ok(())
 }
 
+/// Create an embed from a BestOfMessage.
 fn create_embed(
     message: &BestOfMessage,
-) -> Result<serenity::CreateEmbed, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<serenity::CreateEmbed, Box<dyn Error + Send + Sync>> {
     // Handle the timestamp
     let timestamp_result =
         serenity::model::Timestamp::from_unix_timestamp(message.timestamp as i64);
@@ -389,7 +454,7 @@ fn create_embed(
     // Match on the result to handle the error appropriately
     let timestamp = match timestamp_result {
         Ok(ts) => ts,
-        Err(e) => return Err(Box::new(e)), // Convert InvalidTimestamp to Box<dyn std::error::Error>
+        Err(e) => return Err(Box::new(e)),
     };
 
     // Initialize the embed with the title and timestamp

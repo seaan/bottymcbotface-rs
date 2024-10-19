@@ -1,4 +1,5 @@
 use crate::{Context, Error};
+use log::{debug, error};
 
 /// Show this help menu
 #[poise::command(track_edits, slash_command)]
@@ -30,17 +31,8 @@ pub async fn orange(ctx: Context<'_>) -> Result<(), Error> {
 
 /// Messages with a certain number of reactions.
 #[poise::command(slash_command, track_edits, subcommands("random"))]
-pub async fn bestof(ctx: Context<'_>) -> Result<(), Error> {
-    ctx.data()
-        .bestof
-        .lock()
-        .await
-        .post_random(
-            ctx.serenity_context(),
-            ctx.channel_id(),
-            Some(String::from("*Random bestof:*")),
-        )
-        .await
+pub async fn bestof(_ctx: Context<'_>) -> Result<(), Error> {
+    Ok(())
 }
 
 /// Post a random bestof.
@@ -55,5 +47,26 @@ pub async fn random(ctx: Context<'_>) -> Result<(), Error> {
             ctx.channel_id(),
             Some(String::from("*Random bestof:*")),
         )
+        .await?;
+
+    Ok(())
+}
+
+/// Search the entire history of message and add to the runtime database as necessary.
+#[poise::command(slash_command, track_edits)]
+pub async fn history(ctx: Context<'_>) -> Result<(), Error> {
+    match ctx
+        .data()
+        .bestof
+        .lock()
         .await
+        .search_and_add_new_bestof(ctx.serenity_context(), true)
+        .await
+    {
+        Ok(_) => debug!("Successfully searched and added new bestof"),
+        Err(why) => {
+            error!("Failed to search and add new bestof: {:?}", why);
+        }
+    }
+    Ok(())
 }

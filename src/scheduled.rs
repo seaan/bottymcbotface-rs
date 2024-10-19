@@ -111,7 +111,9 @@ async fn search_new_bestof(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut bestof_unlocked = bestof.lock().await;
 
-    bestof_unlocked.search_and_add_new_bestof(ctx).await?;
+    bestof_unlocked
+        .search_and_add_new_bestof(ctx, false)
+        .await?;
     Ok(())
 }
 
