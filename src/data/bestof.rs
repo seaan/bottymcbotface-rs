@@ -105,6 +105,7 @@ impl BestOf {
         &mut self,
         ctx: &Context,
         channel_to_post_in: ChannelId,
+        prelude: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut rng = StdRng::from_rng(OsRng)?;
 
@@ -113,7 +114,7 @@ impl BestOf {
             None => Err("No messages available to post".into()), // Handle empty runtime_db case
             Some(msg_to_post) => {
                 // Call post_message_as_embed to post the selected message
-                post_message_as_embed(ctx, msg_to_post, channel_to_post_in, None).await
+                post_message_as_embed(ctx, msg_to_post, channel_to_post_in, prelude).await
             }
         }
     }

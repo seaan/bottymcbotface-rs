@@ -21,44 +21,39 @@ pub async fn help(
     Ok(())
 }
 
-/// Respond with an orange
+/// Orange
 #[poise::command(slash_command, track_edits)]
-pub async fn orange(
-    ctx: Context<'_>,
-    #[description = "Post an orange."]
-    #[autocomplete = "poise::builtins::autocomplete_command"]
-    _cmd: Option<String>,
-) -> Result<(), Error> {
+pub async fn orange(ctx: Context<'_>) -> Result<(), Error> {
     ctx.say("🍊").await?;
     Ok(())
 }
 
+/// Messages with a certain number of reactions.
 #[poise::command(slash_command, track_edits, subcommands("random"))]
-pub async fn bestof(
-    ctx: Context<'_>,
-    #[description = "Post a random bestof."]
-    #[autocomplete = "poise::builtins::autocomplete_command"]
-    _cmd: Option<String>,
-) -> Result<(), Error> {
+pub async fn bestof(ctx: Context<'_>) -> Result<(), Error> {
     ctx.data()
         .bestof
         .lock()
         .await
-        .post_random(ctx.serenity_context(), ctx.channel_id())
+        .post_random(
+            ctx.serenity_context(),
+            ctx.channel_id(),
+            Some(String::from("*Random bestof:*")),
+        )
         .await
 }
 
+/// Post a random bestof.
 #[poise::command(slash_command, track_edits)]
-pub async fn random(
-    ctx: Context<'_>,
-    #[description = "Post a random bestof."]
-    #[autocomplete = "poise::builtins::autocomplete_command"]
-    _cmd: Option<String>,
-) -> Result<(), Error> {
+pub async fn random(ctx: Context<'_>) -> Result<(), Error> {
     ctx.data()
         .bestof
         .lock()
         .await
-        .post_random(ctx.serenity_context(), ctx.channel_id())
+        .post_random(
+            ctx.serenity_context(),
+            ctx.channel_id(),
+            Some(String::from("*Random bestof:*")),
+        )
         .await
 }
