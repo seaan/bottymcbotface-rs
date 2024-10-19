@@ -43,7 +43,7 @@ impl BotDatabase {
     /// Load all rows from any given table.
     pub async fn load_all_from_table<T>(
         &self,
-        table_name: &str,
+        table_name: String,
     ) -> Result<Vec<T>, Box<dyn std::error::Error>>
     where
         T: for<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> + Send + Unpin,
@@ -55,5 +55,10 @@ impl BotDatabase {
             .await?;
 
         Ok(rows)
+    }
+
+    /// Get a reference to the connection pool
+    pub fn get_conn(&self) -> &Pool<Sqlite> {
+        &self.conn
     }
 }

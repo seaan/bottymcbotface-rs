@@ -17,12 +17,12 @@ const MINIMUM_REACTIONS: u64 = 5;
 
 #[derive(FromRow, Debug, Clone)]
 pub struct BestOfMessage {
-    pub id: u64,
+    pub id: i64,
     pub author: String,
     pub content: String,
     pub link: String,
     pub channel: String,
-    pub count: u64,
+    pub count: i64,
     pub timestamp: f64,
     pub image: Option<String>,
 }
@@ -39,20 +39,20 @@ impl BestOfMessage {
         };
 
         Ok(BestOfMessage {
-            id: message.id.get(),                                      // Message ID as u64
-            author: message.author.name.clone(),                       // Author's name
-            content: message.content.clone(),                          // Message content
-            link: message.link(),                                      // Permalink to the message
-            channel: channel_name,                                     // Channel name
-            count: total_number_of_reactions(message),                 // Total reaction count
-            timestamp: message.timestamp.unix_timestamp() as f64,      // Message timestamp
+            id: message.id.get() as i64,                          // Message ID as i64
+            author: message.author.name.clone(),                  // Author's name
+            content: message.content.clone(),                     // Message content
+            link: message.link(),                                 // Permalink to the message
+            channel: channel_name,                                // Channel name
+            count: total_number_of_reactions(message),            // Total reaction count as i64
+            timestamp: message.timestamp.unix_timestamp() as f64, // Message timestamp
             image: message.attachments.first().map(|a| a.url.clone()), // Optional image URL from the attachments
         })
     }
 }
 
 pub struct BestOf {
-    runtime_db: HashMap<u64, BestOfMessage>,
+    runtime_db: HashMap<i64, BestOfMessage>,
     runtime_counts: u64,
 }
 
@@ -147,7 +147,9 @@ impl BestOf {
         &mut self,
         persist_db: &mut db::BotDatabase,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let messages: Vec<BestOfMessage> = persist_db.load_all_from_table("messages").await?;
+        let messages: Vec<BestOfMessage> = persist_db
+            .load_all_from_table(String::from("messages"))
+            .await?;
 
         for msg in messages {
             self.runtime_db.insert(msg.id, msg);
@@ -159,9 +161,35 @@ impl BestOf {
     /// Update the persisted db from the runtime db.
     pub async fn update_persisted_db(
         &mut self,
-        _persist_db: &mut db::BotDatabase,
+        persist_db: &mut db::BotDatabase,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // to be done
+        let db_conn = persist_db.get_conn();
+
+        // upsert all messages in runtime_db into the persisted database
+        for msg in self.runtime_db.values() {
+            sqlx::query(
+                "INSERT INTO messages (id, author, content, link, channel, count, timestamp, image)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+             author = excluded.author,
+             content = excluded.content,
+             link = excluded.link,
+             channel = excluded.channel,
+             count = excluded.count,
+             timestamp = excluded.timestamp,
+             image = excluded.image",
+            )
+            .bind(msg.id)
+            .bind(&msg.author)
+            .bind(&msg.content)
+            .bind(&msg.link)
+            .bind(&msg.channel)
+            .bind(msg.count)
+            .bind(msg.timestamp)
+            .bind(&msg.image)
+            .execute(db_conn)
+            .await?;
+        }
         Ok(())
     }
 
@@ -392,11 +420,11 @@ fn create_embed(
 }
 
 /// Takes a Message and extracts the total count of reactions.
-fn total_number_of_reactions(message: &Message) -> u64 {
-    let mut total: u64 = 0;
+fn total_number_of_reactions(message: &Message) -> i64 {
+    let mut total: i64 = 0;
 
     for reaction in &message.reactions {
-        total += reaction.count;
+        total += reaction.count as i64;
     }
 
     total
