@@ -1,12 +1,12 @@
-use crate::data::db::BotDatabase;
 use crate::data::bestof::BestOf;
+use crate::data::db::BotDatabase;
 
 use log::{info, warn};
 use poise::serenity_prelude as serenity;
+use rand::rngs::{OsRng, StdRng};
+use rand::{Rng, SeedableRng};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use rand::rngs::{StdRng, OsRng};
-use rand::{Rng, SeedableRng};
 use tokio::time::{sleep, Duration};
 
 pub async fn spawn_scheduled_tasks(
@@ -44,7 +44,8 @@ async fn post_daily_bestof(
     bestof: &Arc<Mutex<BestOf>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let update_channel = serenity::ChannelId::new(563105728341082148); // DM for now
-    let mut bestof_unlocked = acquire_lock(bestof).map_err(|e| format!("bestof lock error: {:?}", e))?;
+    let mut bestof_unlocked =
+        acquire_lock(bestof).map_err(|e| format!("bestof lock error: {:?}", e))?;
 
     bestof_unlocked.post_random(ctx, update_channel).await
 }
@@ -67,16 +68,14 @@ async fn update_bestof_runtime_db(
     ctx: &serenity::Context,
     bestof: &Arc<Mutex<BestOf>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut bestof_unlocked = acquire_lock(bestof).map_err(|e| format!("bestof lock error: {:?}", e))?;
-    
+    let mut bestof_unlocked =
+        acquire_lock(bestof).map_err(|e| format!("bestof lock error: {:?}", e))?;
+
     bestof_unlocked.update(ctx).await?;
     Ok(())
 }
 
-async fn persistent_database_update_task(
-    db: Arc<Mutex<BotDatabase>>,
-    bestof: Arc<Mutex<BestOf>>,
-) {
+async fn persistent_database_update_task(db: Arc<Mutex<BotDatabase>>, bestof: Arc<Mutex<BestOf>>) {
     loop {
         sleep_random_time().await;
 
@@ -109,13 +108,17 @@ async fn update_bestof_persisted_db(
     db: &Arc<Mutex<BotDatabase>>,
     bestof: &Arc<Mutex<BestOf>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut bestof_unlocked = acquire_lock(bestof).map_err(|e| format!("bestof lock error: {:?}", e))?;
+    let mut bestof_unlocked =
+        acquire_lock(bestof).map_err(|e| format!("bestof lock error: {:?}", e))?;
     let mut db_unlocked = acquire_lock(db).map_err(|e| format!("db lock error: {:?}", e))?;
-    
-    bestof_unlocked.update_persisted_db(&mut db_unlocked).await?;
+
+    bestof_unlocked
+        .update_persisted_db(&mut db_unlocked)
+        .await?;
     Ok(())
 }
 
 fn acquire_lock<T>(lock: &Arc<Mutex<T>>) -> Result<tokio::sync::MutexGuard<'_, T>, String> {
-    lock.try_lock().map_err(|_| "Couldn't acquire lock".to_string())
+    lock.try_lock()
+        .map_err(|_| "Couldn't acquire lock".to_string())
 }

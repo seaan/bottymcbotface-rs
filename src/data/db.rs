@@ -1,6 +1,6 @@
+use log::info;
 use sqlx::{Pool, Sqlite};
 use std::env::var;
-use log::info;
 
 pub struct BotDatabase {
     conn: Pool<Sqlite>,
@@ -9,7 +9,8 @@ pub struct BotDatabase {
 impl BotDatabase {
     pub fn new() -> BotDatabase {
         let db_url = BotDatabase::get_database_url();
-        let new_connection = Pool::connect_lazy(&db_url).unwrap_or_else(|_| panic!("Failed to connect to database {:?}", db_url));
+        let new_connection = Pool::connect_lazy(&db_url)
+            .unwrap_or_else(|_| panic!("Failed to connect to database {:?}", db_url));
 
         BotDatabase {
             conn: new_connection,
@@ -33,7 +34,9 @@ impl BotDatabase {
     }
 
     pub async fn run_migration(&self) -> Result<(), sqlx::Error> {
-        sqlx::migrate!("./data/db/migrations").run(&self.conn).await?;
+        sqlx::migrate!("./data/db/migrations")
+            .run(&self.conn)
+            .await?;
         Ok(())
     }
 }

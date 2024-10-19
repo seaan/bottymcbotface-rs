@@ -105,8 +105,12 @@ async fn main() {
                 // run any migrations as necessary
                 data.db.lock().await.run_migration().await?;
 
-                let _ =
-                    scheduled::spawn_scheduled_tasks(ctx.clone(), Arc::clone(&data.db), Arc::clone(&data.bestof)).await;
+                let _ = scheduled::spawn_scheduled_tasks(
+                    ctx.clone(),
+                    Arc::clone(&data.db),
+                    Arc::clone(&data.bestof),
+                )
+                .await;
                 Ok(data)
             })
         })

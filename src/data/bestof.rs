@@ -5,11 +5,11 @@ use std::collections::{HashMap, HashSet};
 use log::{debug, info, warn};
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{ChannelId, Context, Message, MessageId};
+use rand::rngs::{OsRng, StdRng};
+use rand::seq::IteratorRandom;
 use rand::SeedableRng;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use rand::seq::IteratorRandom;
-use rand::rngs::{StdRng, OsRng};
 
 const MESSAGES_TO_CHECK: u8 = 50;
 const MINIMUM_REACTIONS: u64 = 5;
@@ -93,14 +93,21 @@ impl BestOf {
     }
 
     /// Call to update the persistent database from the runtime db.
-    pub async fn update_persisted_db(&mut self, _persist_db: &mut db::BotDatabase) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn update_persisted_db(
+        &mut self,
+        _persist_db: &mut db::BotDatabase,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // to be done
         Ok(())
     }
 
-    pub async fn post_random(&mut self, ctx: &Context, channel_to_post_in: ChannelId) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn post_random(
+        &mut self,
+        ctx: &Context,
+        channel_to_post_in: ChannelId,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut rng = StdRng::from_rng(OsRng)?;
-        
+
         // Use choose to randomly pick a message from runtime_db
         match self.runtime_db.values().choose(&mut rng) {
             None => Err("No messages available to post".into()), // Handle empty runtime_db case
@@ -189,9 +196,7 @@ async fn trawl_messages_for_reactions(
     let builder = serenity::GetMessages::new().limit(MESSAGES_TO_CHECK);
 
     match channel.id.messages(&ctx.http, builder).await {
-        Ok(mut retrieved_messages) => {
-            Ok(get_reacted_messages(&mut retrieved_messages).await)
-        }
+        Ok(mut retrieved_messages) => Ok(get_reacted_messages(&mut retrieved_messages).await),
         Err(why) => {
             warn!("Failed to retrieve messages: {:#?}", why);
             Err(Box::new(why))
@@ -251,7 +256,14 @@ async fn post_update(
     let update_channel = ChannelId::new(563105728341082148); // DM for now
 
     for msg in new_messages {
-        match post_message_as_embed(ctx, &msg, update_channel, Some(String::from("*Found and stored this bestof:*"))).await {
+        match post_message_as_embed(
+            ctx,
+            &msg,
+            update_channel,
+            Some(String::from("*Found and stored this bestof:*")),
+        )
+        .await
+        {
             Err(why) => warn!("Failed to send update: {:?}", why),
             Ok(_) => continue,
         }
@@ -273,13 +285,10 @@ pub async fn post_message_as_embed(
         msg = msg.content(content);
     }
 
-    channel_to_post_to
-        .send_message(&ctx.http, msg)
-        .await?;
+    channel_to_post_to.send_message(&ctx.http, msg).await?;
 
     Ok(())
 }
-
 
 fn create_embed(
     message: &Message,
