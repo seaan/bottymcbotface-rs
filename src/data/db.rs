@@ -39,4 +39,21 @@ impl BotDatabase {
             .await?;
         Ok(())
     }
+
+    /// Load all rows from any given table.
+    pub async fn load_all_from_table<T>(
+        &self,
+        table_name: &str,
+    ) -> Result<Vec<T>, Box<dyn std::error::Error>>
+    where
+        T: for<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> + Send + Unpin,
+    {
+        let query = format!("SELECT * FROM {}", table_name);
+
+        let rows = sqlx::query_as::<_, T>(&query)
+            .fetch_all(&self.conn) // No mut
+            .await?;
+
+        Ok(rows)
+    }
 }

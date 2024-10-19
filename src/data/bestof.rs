@@ -4,18 +4,55 @@ use std::collections::{HashMap, HashSet};
 
 use log::{debug, info, warn};
 use poise::serenity_prelude as serenity;
-use poise::serenity_prelude::{ChannelId, Context, Message, MessageId};
+use poise::serenity_prelude::{ChannelId, Context, Message};
 use rand::rngs::{OsRng, StdRng};
 use rand::seq::IteratorRandom;
 use rand::SeedableRng;
+use sqlx::FromRow;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 const MESSAGES_TO_CHECK: u8 = 50;
 const MINIMUM_REACTIONS: u64 = 5;
 
+#[derive(FromRow, Debug, Clone)]
+pub struct BestOfMessage {
+    pub id: u64,
+    pub author: String,
+    pub content: String,
+    pub link: String,
+    pub channel: String,
+    pub count: u64,
+    pub timestamp: f64,
+    pub image: Option<String>,
+}
+
+impl BestOfMessage {
+    pub async fn from_serenity_message(
+        message: &serenity::Message,
+        ctx: &serenity::Context,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let channel_name = match message.channel_id.to_channel(ctx).await? {
+            serenity::Channel::Guild(channel) => channel.name.clone(),
+            serenity::Channel::Private(_) => "Private Channel".to_string(),
+            _ => "Unknown Channel".to_string(),
+        };
+
+        Ok(BestOfMessage {
+            id: message.id.get(),                                      // Message ID as u64
+            author: message.author.name.clone(),                       // Author's name
+            content: message.content.clone(),                          // Message content
+            link: message.link(),                                      // Permalink to the message
+            channel: channel_name,                                     // Channel name
+            count: total_number_of_reactions(message),                 // Total reaction count
+            timestamp: message.timestamp.unix_timestamp() as f64,      // Message timestamp
+            image: message.attachments.first().map(|a| a.url.clone()), // Optional image URL from the attachments
+        })
+    }
+}
+
 pub struct BestOf {
-    runtime_db: HashMap<MessageId, Message>,
+    runtime_db: HashMap<u64, BestOfMessage>,
 }
 
 impl BestOf {
@@ -31,7 +68,7 @@ impl BestOf {
         info!("Starting reaction counting..");
 
         let mut current_messages = count_current_reactions_across_channels(ctx).await?;
-        let new_messages = self.update_runtime_db(&mut current_messages).await?;
+        let new_messages = self.update_runtime_db(ctx, &mut current_messages).await?;
 
         post_update(ctx, new_messages).await?;
 
@@ -41,15 +78,13 @@ impl BestOf {
     /// Translate a message update into the runtime database.
     async fn update_runtime_db(
         &mut self,
+        ctx: &Context,
         current_messages: &mut HashMap<ChannelId, Vec<Message>>,
-    ) -> Result<Vec<Message>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<BestOfMessage>, Box<dyn std::error::Error>> {
         let mut new_messages = Vec::new();
 
         for (channel_id, mut messages) in current_messages.drain() {
-            match self
-                .update_messages_for_channel(channel_id, &mut messages)
-                .await
-            {
+            match self.update_messages_for_channel(ctx, &mut messages).await {
                 Err(why) => warn!(
                     "Failed to update runtime db for channel {channel_id}: {:#?}",
                     why
@@ -61,7 +96,7 @@ impl BestOf {
             }
         }
 
-        info!("Updated runtime db size {:?}", self.runtime_db.len());
+        debug!("Updated runtime db size {:?}", self.runtime_db.len());
         debug!("Updated runtime db {:#?}", self.runtime_db);
 
         Ok(new_messages)
@@ -70,29 +105,49 @@ impl BestOf {
     /// Updates the runtime database and returns a vector of any freshly added messages.
     async fn update_messages_for_channel(
         &mut self,
-        _: ChannelId,
+        ctx: &Context,
         messages: &mut Vec<Message>,
-    ) -> Result<Vec<Message>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<BestOfMessage>, Box<dyn std::error::Error>> {
         let mut new_messages_for_channel = Vec::new();
 
         for msg in messages.drain(..) {
-            let key = msg.id;
-            let value = msg.clone();
-
-            match self.runtime_db.insert(key, value) {
-                // If this is a new insertion, `insert` will return None
-                None => {
-                    debug!("Added new message id {:?}", key);
-                    new_messages_for_channel.push(msg);
+            let value = match BestOfMessage::from_serenity_message(&msg, ctx).await {
+                Ok(value) => value,
+                Err(why) => {
+                    warn!("Failed to convert message {:#?}: {:#?}", msg, why);
+                    continue; // Skip this message and move on to the next
                 }
-                Some(_) => debug!("Updated already present message {:?}", key),
+            };
+
+            let key = value.id;
+
+            if self.runtime_db.insert(key, value.clone()).is_none() {
+                // This is a new insertion
+                debug!("Added new message id {:?}", key);
+                new_messages_for_channel.push(value);
+            } else {
+                debug!("Updated already present message {:?}", key);
             }
         }
 
         Ok(new_messages_for_channel)
     }
 
-    /// Call to update the persistent database from the runtime db.
+    /// Load the runtime db from the persisted db.
+    pub async fn load_from_persisted_db(
+        &mut self,
+        persist_db: &mut db::BotDatabase,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let messages: Vec<BestOfMessage> = persist_db.load_all_from_table("messages").await?;
+
+        for msg in messages {
+            self.runtime_db.insert(msg.id, msg);
+        }
+
+        Ok(())
+    }
+
+    /// Update the persisted db from the runtime db.
     pub async fn update_persisted_db(
         &mut self,
         _persist_db: &mut db::BotDatabase,
@@ -251,7 +306,7 @@ fn number_of_users_reacted(message: &Message) -> u64 {
 
 async fn post_update(
     ctx: &Context,
-    new_messages: Vec<Message>,
+    new_messages: Vec<BestOfMessage>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Handle sending the message and propagate any error that occurs
     let update_channel = ChannelId::new(563105728341082148); // DM for now
@@ -275,7 +330,7 @@ async fn post_update(
 
 pub async fn post_message_as_embed(
     ctx: &Context,
-    message: &Message,
+    message: &BestOfMessage,
     channel_to_post_to: ChannelId,
     prelude: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -292,11 +347,11 @@ pub async fn post_message_as_embed(
 }
 
 fn create_embed(
-    message: &Message,
+    message: &BestOfMessage,
 ) -> Result<serenity::CreateEmbed, Box<dyn std::error::Error + Send + Sync>> {
     // Handle the timestamp
     let timestamp_result =
-        serenity::model::Timestamp::from_unix_timestamp(message.timestamp.unix_timestamp());
+        serenity::model::Timestamp::from_unix_timestamp(message.timestamp as i64);
 
     // Match on the result to handle the error appropriately
     let timestamp = match timestamp_result {
@@ -306,22 +361,22 @@ fn create_embed(
 
     // Initialize the embed with the title and timestamp
     let mut embed = serenity::CreateEmbed::default()
-        .title(format!("Message by {}", message.author.name))
-        .timestamp(timestamp);
+        .title(format!("Message by {}", message.author))
+        .timestamp(timestamp)
+        .url(&message.link)
+        .footer(serenity::CreateEmbedFooter::new(format!(
+            "#{}",
+            &message.channel
+        )));
 
-    // Set the image if there's an appropriate attachment
-    if let Some(attachment) = message.attachments.first() {
-        if attachment.url.ends_with(".jpg") || attachment.url.ends_with(".png") {
-            embed = embed.image(attachment.url.clone());
-        }
+    if let Some(attachment) = &message.image {
+        embed = embed.image(attachment.clone());
     }
 
     // Set the description
     embed = embed.description(format!(
-        "{}\n\n-----\n[Link]({})\n*Total Number of Reactions:* {}",
-        message.content,
-        message.link(),
-        total_number_of_reactions(message),
+        "{}\n\n-----\n*Total Number of Reactions:* {}",
+        message.content, message.count,
     ));
 
     Ok(embed)

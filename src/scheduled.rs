@@ -1,7 +1,7 @@
 use crate::data::bestof::BestOf;
 use crate::data::db::BotDatabase;
 
-use log::{info, warn};
+use log::{error, info, warn};
 use poise::serenity_prelude as serenity;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -12,6 +12,11 @@ pub async fn spawn_scheduled_tasks(
     db: Arc<Mutex<BotDatabase>>,
     bestof: Arc<Mutex<BestOf>>,
 ) -> tokio::task::JoinHandle<()> {
+    match load_from_database(db.clone(), bestof.clone()).await {
+        Err(why) => error!("Failed to update from persistent database: {:#?}", why),
+        Ok(_) => info!("Successfully pulled from persistent database!"),
+    }
+
     // Spawn the reaction counting task
     tokio::spawn(reaction_counting_task(ctx.clone(), bestof.clone()));
 
@@ -20,6 +25,18 @@ pub async fn spawn_scheduled_tasks(
 
     // Spawn the daily bestof posting task
     tokio::spawn(daily_bestof_task(ctx, bestof))
+}
+
+async fn load_from_database(
+    db: Arc<Mutex<BotDatabase>>,
+    bestof: Arc<Mutex<BestOf>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut bestof_unlocked = bestof.lock().await;
+    let mut db_unlocked = db.lock().await;
+
+    bestof_unlocked
+        .load_from_persisted_db(&mut db_unlocked)
+        .await
 }
 
 async fn daily_bestof_task(ctx: serenity::Context, bestof: Arc<Mutex<BestOf>>) {
