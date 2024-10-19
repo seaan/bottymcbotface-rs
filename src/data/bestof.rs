@@ -191,6 +191,18 @@ impl BestOf {
         Ok(())
     }
 
+    /// Return an embed of a random message from the runtime db.
+    pub async fn get_random_bestof_embed(
+        &self,
+    ) -> Result<serenity::CreateEmbed, Box<dyn Error + Send + Sync>> {
+        let mut rng = StdRng::from_rng(OsRng)?;
+
+        match self.runtime_db.values().choose(&mut rng) {
+            None => Err("No messages available".into()), // Handle empty runtime_db case
+            Some(msg) => create_embed(msg),
+        }
+    }
+
     /// Post a random message from the runtime db to a channel.
     pub async fn post_random(
         &mut self,

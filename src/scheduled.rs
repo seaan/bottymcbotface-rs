@@ -94,15 +94,17 @@ async fn post_daily_bestof(
     bestof: &Arc<Mutex<BestOf>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let update_channel = serenity::ChannelId::new(563105728341082148); // DM for now
-    let mut bestof_unlocked = bestof.lock().await;
 
-    bestof_unlocked
-        .post_random(
-            ctx,
-            update_channel,
-            Some(String::from("*Here's your daily bestof:*")),
-        )
-        .await
+    let bestof_unlocked = bestof.lock().await;
+
+    let embed = bestof_unlocked.get_random_bestof_embed().await?;
+    let msg = serenity::CreateMessage::new()
+        .embed(embed)
+        .content(String::from("*Here's your daily bestof:*"));
+
+    update_channel.send_message(&ctx.http, msg).await?;
+
+    Ok(())
 }
 
 async fn search_new_bestof(

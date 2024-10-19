@@ -24,7 +24,7 @@ pub async fn help(
 /// Orange
 #[poise::command(slash_command, track_edits)]
 pub async fn orange(ctx: Context<'_>) -> Result<(), Error> {
-    ctx.say("🍊").await?;
+    ctx.reply("🍊").await?;
     Ok(())
 }
 
@@ -37,16 +37,24 @@ pub async fn bestof(_ctx: Context<'_>) -> Result<(), Error> {
 /// Post a random bestof.
 #[poise::command(slash_command, track_edits)]
 pub async fn random(ctx: Context<'_>) -> Result<(), Error> {
-    ctx.data()
+    // Defer the response to give more time for the command to execute
+    ctx.defer().await?;
+
+    let embed = ctx
+        .data()
         .bestof
         .lock()
         .await
-        .post_random(
-            ctx.serenity_context(),
-            ctx.channel_id(),
-            Some(String::from("*Random bestof:*")),
-        )
+        .get_random_bestof_embed()
         .await?;
+
+    ctx.send(poise::CreateReply {
+        content: Some("*Here's a random bestof:*".to_string()),
+        embeds: vec![embed],
+        reply: true,
+        ..Default::default()
+    })
+    .await?;
 
     Ok(())
 }
