@@ -5,7 +5,6 @@ use std::collections::{HashMap, HashSet};
 use log::{debug, error, info, warn};
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{ChannelId, Context, Message, MessageId};
-use ::serenity::all::PermissionOverwrite;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -91,7 +90,7 @@ impl BestOf {
     }
 
     /// Call to update the persistent database from the runtime db.
-    pub async fn update_persisted_db(_persist_db: db::BotDatabase) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn update_persisted_db(&mut self, _persist_db: &mut db::BotDatabase) -> Result<(), Box<dyn std::error::Error>> {
         // to be done
         Ok(())
     }
@@ -126,7 +125,7 @@ async fn count_current_reactions_across_channels(
                     }
                     Ok(reactions) => {
                         if let Some(reacted_messages) = reactions {
-                            if reacted_messages.len() > 0 {
+                            if !reacted_messages.is_empty() {
                                 debug!("Adding {:?} messages from {channel_id} to reacted_messages_per_channel", reacted_messages.len());
                                 reacted_messages_per_channel
                                     .lock()
@@ -158,7 +157,7 @@ async fn parse_reactions_from_channel(
     channel_id: ChannelId,
 ) -> Result<Option<Vec<Message>>, Box<dyn std::error::Error + Send + Sync>> {
     match channel_id.to_channel(&ctx.http).await?.guild() {
-        None => return Ok(None), // not a guild channel, just pass
+        None => Ok(None), // not a guild channel, just pass
         Some(channel) => Ok(Some(trawl_messages_for_reactions(ctx, channel).await?)),
     }
 }
@@ -175,11 +174,11 @@ async fn trawl_messages_for_reactions(
 
     match channel.id.messages(&ctx.http, builder).await {
         Ok(mut retrieved_messages) => {
-            return Ok(get_reacted_messages(&mut retrieved_messages).await);
+            Ok(get_reacted_messages(&mut retrieved_messages).await)
         }
         Err(why) => {
             warn!("Failed to retrieve messages: {:#?}", why);
-            return Err(Box::new(why));
+            Err(Box::new(why))
         }
     }
 }
@@ -197,7 +196,7 @@ async fn get_reacted_messages(retrieved_messages: &mut Vec<Message>) -> Vec<Mess
 
 fn message_meets_criteria(message: Message) -> Option<Message> {
     if message.author.bot
-        || message.reactions.len() < 1
+        || message.reactions.is_empty()
         || number_of_users_reacted(&message) < MINIMUM_REACTIONS
     {
         return None;
@@ -208,7 +207,7 @@ fn message_meets_criteria(message: Message) -> Option<Message> {
         message
     );
 
-    return Some(message);
+    Some(message)
 }
 
 /// Takes a Message and extracts the highest count reaction.

@@ -22,18 +22,18 @@ impl BotDatabase {
             Ok(env) if env == "production" => {
                 info!("Using production database");
                 // Return the production database URL
-                "sqlite://db/production.db".to_string()
+                "sqlite://data/db/production.db".to_string()
             }
             _ => {
                 // Default to development/testing database URL
                 info!("Using development database");
-                "sqlite://db/dev.db".to_string()
+                "sqlite://data/db/dev.db".to_string()
             }
         }
     }
 
     pub async fn run_migration(&self) -> Result<(), sqlx::Error> {
-        sqlx::migrate!("./db/migrations").run(&self.conn).await?;
+        sqlx::migrate!("./data/db/migrations").run(&self.conn).await?;
         Ok(())
     }
 }
