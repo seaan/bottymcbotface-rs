@@ -18,7 +18,7 @@ pub async fn spawn_scheduled_tasks(
     }
 
     // Spawn the reaction counting task
-    tokio::spawn(reaction_counting_task(ctx.clone(), bestof.clone()));
+    tokio::spawn(search_new_bestof_task(ctx.clone(), bestof.clone()));
 
     // Spawn the persistent database update task
     tokio::spawn(persistent_database_update_task(db, bestof.clone()));
@@ -51,9 +51,9 @@ async fn daily_bestof_task(ctx: serenity::Context, bestof: Arc<Mutex<BestOf>>) {
     }
 }
 
-async fn reaction_counting_task(ctx: serenity::Context, bestof: Arc<Mutex<BestOf>>) {
+async fn search_new_bestof_task(ctx: serenity::Context, bestof: Arc<Mutex<BestOf>>) {
     loop {
-        if let Err(why) = update_bestof_runtime_db(&ctx, &bestof).await {
+        if let Err(why) = search_new_bestof(&ctx, &bestof).await {
             warn!("Failed to update bestof runtime data: {:?}", why);
         }
 
@@ -91,13 +91,13 @@ async fn post_daily_bestof(
         .await
 }
 
-async fn update_bestof_runtime_db(
+async fn search_new_bestof(
     ctx: &serenity::Context,
     bestof: &Arc<Mutex<BestOf>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut bestof_unlocked = bestof.lock().await;
 
-    bestof_unlocked.update(ctx).await?;
+    bestof_unlocked.search_and_add_new_bestof(ctx).await?;
     Ok(())
 }
 

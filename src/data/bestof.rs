@@ -53,30 +53,39 @@ impl BestOfMessage {
 
 pub struct BestOf {
     runtime_db: HashMap<u64, BestOfMessage>,
+    runtime_counts: u64,
 }
 
 impl BestOf {
     pub fn new() -> BestOf {
         BestOf {
             runtime_db: HashMap::new(),
+            runtime_counts: 0,
         }
     }
 
     /// Trigger a recount of reactions on the last 5 days worth of messages.
     /// Store any updates. Post an update on new messages to the channel.
-    pub async fn update(&mut self, ctx: &Context) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn search_and_add_new_bestof(
+        &mut self,
+        ctx: &Context,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         info!("Starting reaction counting..");
 
         let mut current_messages = count_current_reactions_across_channels(ctx).await?;
-        let new_messages = self.update_runtime_db(ctx, &mut current_messages).await?;
+        let new_messages = self
+            .update_runtime_db_from_new_bestof(ctx, &mut current_messages)
+            .await?;
 
-        post_update(ctx, new_messages).await?;
+        if self.runtime_counts > 0 {
+            post_update(ctx, new_messages).await?;
+        }
 
         Ok(())
     }
 
     /// Translate a message update into the runtime database.
-    async fn update_runtime_db(
+    async fn update_runtime_db_from_new_bestof(
         &mut self,
         ctx: &Context,
         current_messages: &mut HashMap<ChannelId, Vec<Message>>,
