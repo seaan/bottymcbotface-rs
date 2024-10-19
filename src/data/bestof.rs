@@ -2,11 +2,14 @@ use crate::data::db;
 
 use std::collections::{HashMap, HashSet};
 
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{ChannelId, Context, Message, MessageId};
+use rand::SeedableRng;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use rand::seq::IteratorRandom;
+use rand::rngs::{StdRng, OsRng};
 
 const MESSAGES_TO_CHECK: u8 = 50;
 const MINIMUM_REACTIONS: u64 = 5;
@@ -16,7 +19,7 @@ pub struct BestOf {
 }
 
 impl BestOf {
-    pub fn new(persist_db: Arc<Mutex<db::BotDatabase>>) -> BestOf {
+    pub fn new() -> BestOf {
         BestOf {
             runtime_db: HashMap::new(),
         }
@@ -93,6 +96,19 @@ impl BestOf {
     pub async fn update_persisted_db(&mut self, _persist_db: &mut db::BotDatabase) -> Result<(), Box<dyn std::error::Error>> {
         // to be done
         Ok(())
+    }
+
+    pub async fn post_random(&mut self, ctx: &Context, channel_to_post_in: ChannelId) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let mut rng = StdRng::from_rng(OsRng)?;
+        
+        // Use choose to randomly pick a message from runtime_db
+        match self.runtime_db.values().choose(&mut rng) {
+            None => Err("No messages available to post".into()), // Handle empty runtime_db case
+            Some(msg_to_post) => {
+                // Call post_message_as_embed to post the selected message
+                post_message_as_embed(ctx, msg_to_post, channel_to_post_in, None).await
+            }
+        }
     }
 }
 
@@ -235,31 +251,39 @@ async fn post_update(
     let update_channel = ChannelId::new(563105728341082148); // DM for now
 
     for msg in new_messages {
-        match create_embed(&msg) {
-            Err(why) => warn!("Failed to create embed for update: {:?}", why),
-            Ok(embed) => {
-                match update_channel
-                    .send_message(
-                        &ctx.http,
-                        serenity::CreateMessage::new()
-                            .content("*Found and stored this bestof:*")
-                            .embed(embed),
-                    )
-                    .await
-                {
-                    Err(why) => error!("Failed to send an update message: {:?}", why),
-                    Ok(_) => continue,
-                }
-            }
+        match post_message_as_embed(ctx, &msg, update_channel, Some(String::from("*Found and stored this bestof:*"))).await {
+            Err(why) => warn!("Failed to send update: {:?}", why),
+            Ok(_) => continue,
         }
     }
 
     Ok(())
 }
 
+pub async fn post_message_as_embed(
+    ctx: &Context,
+    message: &Message,
+    channel_to_post_to: ChannelId,
+    prelude: Option<String>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let embed = create_embed(message)?;
+    let mut msg = serenity::CreateMessage::new().embed(embed);
+
+    if let Some(content) = prelude {
+        msg = msg.content(content);
+    }
+
+    channel_to_post_to
+        .send_message(&ctx.http, msg)
+        .await?;
+
+    Ok(())
+}
+
+
 fn create_embed(
     message: &Message,
-) -> Result<serenity::CreateEmbed, Box<dyn std::error::Error + Send>> {
+) -> Result<serenity::CreateEmbed, Box<dyn std::error::Error + Send + Sync>> {
     // Handle the timestamp
     let timestamp_result =
         serenity::model::Timestamp::from_unix_timestamp(message.timestamp.unix_timestamp());

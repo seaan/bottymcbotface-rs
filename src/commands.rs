@@ -32,3 +32,23 @@ pub async fn orange(
     ctx.say("🍊").await?;
     Ok(())
 }
+
+#[poise::command(slash_command, track_edits, subcommands("random"))]
+pub async fn bestof(
+    ctx: Context<'_>,
+    #[description = "Post a random bestof."]
+    #[autocomplete = "poise::builtins::autocomplete_command"]
+    _cmd: Option<String>,
+) -> Result<(), Error>{
+    ctx.data().bestof.lock().await.post_random(ctx.serenity_context(), ctx.channel_id()).await
+}
+
+#[poise::command(slash_command, track_edits)]
+pub async fn random(
+    ctx: Context<'_>,
+    #[description = "Post a random bestof."]
+    #[autocomplete = "poise::builtins::autocomplete_command"]
+    _cmd: Option<String>,
+)  -> Result<(), Error>{
+    ctx.data().bestof.lock().await.post_random(ctx.serenity_context(), ctx.channel_id()).await
+}

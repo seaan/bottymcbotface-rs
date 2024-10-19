@@ -47,7 +47,7 @@ async fn main() {
     // FrameworkOptions contains all of poise's configuration option in one struct
     // Every option can be omitted to use its default value
     let options = poise::FrameworkOptions {
-        commands: vec![commands::help(), commands::orange()],
+        commands: vec![commands::help(), commands::orange(), commands::bestof()],
         prefix_options: poise::PrefixFrameworkOptions {
             edit_tracker: Some(Arc::new(poise::EditTracker::for_timespan(
                 Duration::from_secs(3600),

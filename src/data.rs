@@ -19,7 +19,7 @@ impl Data {
         Data {
             db: db.clone(),
             quotes_for_response: Mutex::new(RobotQuotes::new()),
-            bestof: Arc::new(Mutex::new(bestof::BestOf::new(Arc::clone(&db)))),
+            bestof: Arc::new(Mutex::new(bestof::BestOf::new())),
         }
     }
 }
