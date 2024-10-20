@@ -1,3 +1,4 @@
+use crate::constants::QUOTES_CHANNEL_ID;
 use crate::data::bestof::BestOf;
 use crate::data::db::BotDatabase;
 
@@ -97,8 +98,7 @@ async fn post_daily_bestof(
     ctx: &serenity::Context,
     bestof: &Arc<Mutex<BestOf>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let update_channel = serenity::ChannelId::new(563105728341082148); // DM for now
-
+    let update_channel = serenity::ChannelId::new(QUOTES_CHANNEL_ID);
     let bestof_unlocked = bestof.lock().await;
 
     let embed = bestof_unlocked.get_random_bestof_embed().await?;

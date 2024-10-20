@@ -1,3 +1,4 @@
+use crate::constants::QUOTES_CHANNEL_ID;
 use crate::data::db;
 
 use chrono::{DateTime, Utc};
@@ -415,7 +416,7 @@ async fn post_update(
     ctx: &Context,
     new_messages: Vec<BestOfMessage>,
 ) -> Result<(), Box<dyn Error>> {
-    let update_channel = ChannelId::new(563105728341082148); // DM for now
+    let update_channel = ChannelId::new(QUOTES_CHANNEL_ID);
 
     for msg in new_messages {
         match post_message_as_embed(
