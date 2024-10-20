@@ -202,25 +202,6 @@ impl BestOf {
             Some(msg) => create_embed(msg),
         }
     }
-
-    /// Post a random message from the runtime db to a channel.
-    pub async fn post_random(
-        &mut self,
-        ctx: &Context,
-        channel_to_post_in: ChannelId,
-        prelude: Option<String>,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let mut rng = StdRng::from_rng(OsRng)?;
-
-        // Use choose to randomly pick a message from runtime_db
-        match self.runtime_db.values().choose(&mut rng) {
-            None => Err("No messages available to post".into()), // Handle empty runtime_db case
-            Some(msg_to_post) => {
-                // Call post_message_as_embed to post the selected message
-                post_message_as_embed(ctx, msg_to_post, channel_to_post_in, prelude).await
-            }
-        }
-    }
 }
 
 /// Count the current reactions across all channels, with one thread
