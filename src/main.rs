@@ -96,6 +96,7 @@ async fn main() {
                 Ok(())
             })
         },
+        owners: HashSet::from_iter(vec![serenity::UserId::new(95582406169329664)]),
         ..Default::default()
     };
 

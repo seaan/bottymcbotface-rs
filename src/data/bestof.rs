@@ -1,5 +1,6 @@
 use crate::data::db;
 
+use chrono::{DateTime, Utc};
 use log::{debug, info, warn};
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{ChannelId, Context, Message, MessageId};
@@ -67,12 +68,11 @@ impl BestOf {
     pub async fn search_and_add_new_bestof(
         &mut self,
         ctx: &Context,
-        recursive_search: bool,
+        since: Option<DateTime<Utc>>,
     ) -> Result<(), Box<dyn Error>> {
         info!("Starting reaction counting..");
 
-        let mut current_messages =
-            count_current_reactions_across_channels(ctx, recursive_search).await?;
+        let mut current_messages = count_current_reactions_across_channels(ctx, since).await?;
         let new_messages = self
             .update_runtime_db_from_new_bestof(ctx, &mut current_messages)
             .await?;
@@ -208,7 +208,7 @@ impl BestOf {
 /// per channel.
 async fn count_current_reactions_across_channels(
     ctx: &Context,
-    recursive_search: bool,
+    since: Option<DateTime<Utc>>,
 ) -> Result<HashMap<ChannelId, Vec<Message>>, Box<dyn Error>> {
     let thicc_guild = serenity::GuildId::new(561602796286378029);
 
@@ -230,7 +230,7 @@ async fn count_current_reactions_across_channels(
             let ctx = ctx.clone();
             let reacted_messages_per_channel = Arc::clone(&reacted_messages_per_channel);
             tokio::spawn(async move {
-                match parse_reactions_from_channel(&ctx, channel_id, recursive_search).await {
+                match parse_reactions_from_channel(&ctx, channel_id, since).await {
                     Err(why) => {
                         warn!("Failed to search channel {channel_id}: {:#?}", why);
                     }
@@ -267,12 +267,12 @@ async fn count_current_reactions_across_channels(
 async fn parse_reactions_from_channel(
     ctx: &Context,
     channel_id: ChannelId,
-    recursive_search: bool,
+    since: Option<DateTime<Utc>>,
 ) -> Result<Option<Vec<Message>>, Box<dyn Error + Send + Sync>> {
     match channel_id.to_channel(&ctx.http).await?.guild() {
         None => Ok(None), // not a guild channel, just pass
         Some(channel) => Ok(Some(
-            trawl_messages_for_reactions(ctx, channel, recursive_search).await?,
+            trawl_messages_for_reactions(ctx, channel, since).await?,
         )),
     }
 }
@@ -281,14 +281,14 @@ async fn parse_reactions_from_channel(
 async fn trawl_messages_for_reactions(
     ctx: &Context,
     channel: serenity::GuildChannel,
-    recursive_search: bool,
+    since: Option<DateTime<Utc>>,
 ) -> Result<Vec<Message>, Box<dyn Error + Send + Sync>> {
     debug!(
         "Channel ID: {:?}, Channel Name: {:?}",
         channel.id, channel.name
     );
 
-    match retrieve_messages(ctx, channel, recursive_search).await {
+    match retrieve_messages(ctx, channel, since).await {
         Ok(mut retrieved_messages) => Ok(get_reacted_messages(&mut retrieved_messages).await),
         Err(why) => {
             warn!("Failed to retrieve messages: {:#?}", why);
@@ -301,7 +301,7 @@ async fn trawl_messages_for_reactions(
 async fn retrieve_messages(
     ctx: &Context,
     channel: serenity::GuildChannel,
-    recursive_search: bool,
+    since: Option<DateTime<Utc>>,
 ) -> Result<Vec<Message>, serenity::Error> {
     let mut all_messages: Vec<Message> = Vec::new();
     let mut before: Option<MessageId> = None;
@@ -315,19 +315,27 @@ async fn retrieve_messages(
 
         all_messages.append(&mut messages);
 
-        if recursive_search {
-            before = Some(all_messages.last().unwrap().id);
-            info!(
-                "Found {:?} messages in channel {:?}, last message post time {:?}, continuing search..",
-                all_messages.len(),
-                channel.name,
+        match since {
+            Some(since) => {
+                before = Some(all_messages.last().unwrap().id);
+
                 match before {
-                    Some(msg_id) => msg_id.created_at().to_string(),
-                    None => String::from("invalid"),
+                    Some(msg_id) => {
+                        if msg_id.created_at() < since.into() {
+                            break;
+                        }
+
+                        info!(
+                            "Found {:?} messages in channel {:?}, last message post time {:?}, continuing search..",
+                            all_messages.len(),
+                            channel.name,
+                            msg_id.created_at().to_string()
+                        );
+                    }
+                    None => break,
                 }
-            );
-        } else {
-            break;
+            }
+            None => break,
         }
     }
 
