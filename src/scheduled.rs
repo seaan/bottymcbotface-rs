@@ -42,20 +42,24 @@ async fn load_from_database(
 
 async fn daily_bestof_task(ctx: serenity::Context, bestof: Arc<Mutex<BestOf>>) {
     loop {
-        // Calculate the duration until the next 9 AM
+        // Calculate the duration until the next 15:00 UTC
         let now = Utc::now();
-        let next_9am = now.date().and_hms(9, 0, 0);
-        let duration_until_next_9am = if now.time() < next_9am.time() {
-            next_9am - now
+        let now_naive = now.naive_utc();
+        let next_3pm = now.date_naive().and_hms_opt(15, 0, 0).unwrap();
+        let duration_until_next_3pm = if now_naive.time() < next_3pm.time() {
+            next_3pm - now_naive
         } else {
-            next_9am + ChronoDuration::days(1) - now
+            next_3pm + ChronoDuration::days(1) - now_naive
         };
 
-        // Sleep until the next 9 AM
-        let sleep_duration = duration_until_next_9am
+        // Sleep until the next 15:00 UTC
+        let sleep_duration = duration_until_next_3pm
             .to_std()
             .unwrap_or_else(|_| Duration::from_secs(86400));
-        info!("Next posting at 9 AM, sleeping for {:?}", sleep_duration);
+        info!(
+            "Next posting at 15:00 UTC, sleeping for {:?}",
+            sleep_duration
+        );
         sleep(sleep_duration).await;
 
         // Post the daily bestof
