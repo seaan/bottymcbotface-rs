@@ -317,6 +317,15 @@ async fn retrieve_messages(
 
         if recursive_search {
             before = Some(all_messages.last().unwrap().id);
+            info!(
+                "Found {:?} messages in channel {:?}, last message post time {:?}, continuing search..",
+                all_messages.len(),
+                channel.name,
+                match before {
+                    Some(msg_id) => msg_id.created_at().to_string(),
+                    None => String::from("invalid"),
+                }
+            );
         } else {
             break;
         }

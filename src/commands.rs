@@ -29,7 +29,7 @@ pub async fn orange(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Messages with a certain number of reactions.
-#[poise::command(slash_command, track_edits, subcommands("random"))]
+#[poise::command(slash_command, track_edits, subcommands("random", "history"))]
 pub async fn bestof(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
@@ -62,6 +62,9 @@ pub async fn random(ctx: Context<'_>) -> Result<(), Error> {
 /// Search the entire history of message and add to the runtime database as necessary.
 #[poise::command(slash_command, track_edits)]
 pub async fn history(ctx: Context<'_>) -> Result<(), Error> {
+    // Defer the response to give more time for the command to execute
+    ctx.defer().await?;
+
     match ctx
         .data()
         .bestof
@@ -75,5 +78,7 @@ pub async fn history(ctx: Context<'_>) -> Result<(), Error> {
             error!("Failed to search and add new bestof: {:?}", why);
         }
     }
+
+    ctx.reply("All done!").await?;
     Ok(())
 }
