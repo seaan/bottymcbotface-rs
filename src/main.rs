@@ -5,7 +5,7 @@ mod scheduled;
 
 use log::{error, info};
 use poise::serenity_prelude as serenity;
-use std::{env::var, sync::Arc, time::Duration};
+use std::{collections::HashSet, env::var, sync::Arc, time::Duration};
 use tracing::instrument;
 
 // Types used by all command functions
@@ -49,6 +49,7 @@ async fn main() {
     let options = poise::FrameworkOptions {
         commands: vec![
             commands::help(),
+            commands::register(),
             commands::orange(),
             commands::bestof_cmds::bestof(),
         ],

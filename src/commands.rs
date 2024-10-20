@@ -28,3 +28,9 @@ pub async fn orange(ctx: Context<'_>) -> Result<(), Error> {
     ctx.reply("🍊").await?;
     Ok(())
 }
+
+#[poise::command(prefix_command, slash_command, owners_only, hide_in_help)]
+pub async fn register(ctx: Context<'_>) -> Result<(), Error> {
+    poise::builtins::register_application_commands_buttons(ctx).await?;
+    Ok(())
+}
