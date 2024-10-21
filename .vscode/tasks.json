@@ -25,9 +25,6 @@
 				"kind": "test",
 				"isDefault": true
 			},
-			"env": {
-				"DISCORD_TOKEN": "NTYzMDk3NDgyMDY2NjU3MzEx.Ges5J2.T3Ok9rJq9z-W6LB1mFjtvHFrZRZd4Y2rZ4Am7Q"
-			}
 		}
 	]
 }

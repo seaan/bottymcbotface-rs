@@ -9,9 +9,6 @@
             "request": "launch",
             "name": "Debug",
             "program": "${workspaceRoot}/target/debug/${workspaceRootFolderName}",
-            "args": [
-                "${env:DISCORD_TOKEN}"
-            ],
             "cwd": "${workspaceRoot}/target/debug/",
             "sourceLanguages": [
                 "rust"

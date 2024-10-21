@@ -89,7 +89,7 @@ async fn persistent_database_update_task(db: Arc<Mutex<BotDatabase>>, bestof: Ar
         }
 
         let sleep_duration = Duration::from_secs(3610);
-        info!("Next reaction counting after {:?}", sleep_duration);
+        info!("Next persistent database update after {:?}", sleep_duration);
         sleep(sleep_duration).await;
     }
 }
