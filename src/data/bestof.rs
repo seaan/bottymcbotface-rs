@@ -1,7 +1,7 @@
 use crate::constants::QUOTES_CHANNEL_ID;
 use crate::data::db;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use futures::stream::StreamExt;
 use log::{debug, info, warn};
 use poise::serenity_prelude as serenity;
@@ -246,6 +246,7 @@ impl BestOf {
         ctx: &Context,
         user_id: Option<serenity::UserId>,
         channel_id: Option<serenity::ChannelId>,
+        time_filter: Option<String>,
     ) -> Result<Vec<BestOfMessage>, Box<dyn Error + Send + Sync>> {
         let mut top_messages: Vec<BestOfMessage> = self.runtime_db.values().cloned().collect();
 
@@ -283,6 +284,29 @@ impl BestOf {
                         } else {
                             None
                         }
+                    }
+                })
+                .collect()
+                .await;
+        }
+
+        // Filter by time if provided
+        if let Some(filter) = time_filter {
+            let now = Utc::now();
+            let since = match filter.as_str() {
+                "today" => now - Duration::days(1),
+                "this_week" => now - Duration::weeks(1),
+                "this_month" => now - Duration::days(30),
+                "this_year" => now - Duration::days(365),
+                _ => now - Duration::days(365 * 100), // Default to a very long time ago
+            };
+
+            top_messages = futures::stream::iter(top_messages)
+                .filter_map(|msg| async move {
+                    if msg.timestamp >= since.timestamp() as f64 {
+                        Some(msg)
+                    } else {
+                        None
                     }
                 })
                 .collect()

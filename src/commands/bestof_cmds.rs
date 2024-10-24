@@ -82,6 +82,9 @@ pub async fn top(
     #[description = "Optional channel to filter by"]
     #[lazy]
     channel: Option<serenity::ChannelId>,
+    #[description = "Optional time filter (today, this_week, this_month, this_year)"]
+    #[lazy]
+    time_filter: Option<String>,
 ) -> Result<(), Error> {
     // Defer the response to give more time for the command to execute
     ctx.defer().await?;
@@ -91,7 +94,7 @@ pub async fn top(
         .bestof
         .lock()
         .await
-        .get_top_reacted_messages(ctx.serenity_context(), user, channel)
+        .get_top_reacted_messages(ctx.serenity_context(), user, channel, time_filter)
         .await?;
 
     let mut embeds = Vec::new();
