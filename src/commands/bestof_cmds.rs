@@ -1,9 +1,14 @@
 use crate::{Context, Error};
 use chrono::{DateTime, Utc};
 use log::{debug, error};
+use poise::serenity_prelude as serenity;
 
 /// Messages with a certain number of reactions.
-#[poise::command(slash_command, track_edits, subcommands("random", "search_history"))]
+#[poise::command(
+    slash_command,
+    track_edits,
+    subcommands("random", "search_history", "top")
+)]
 pub async fn bestof(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
@@ -64,5 +69,50 @@ pub async fn search_history(
     }
 
     ctx.reply("All done!").await?;
+    Ok(())
+}
+
+/// Get the top 10 most reacted messages with an optional filter.
+#[poise::command(slash_command, track_edits)]
+pub async fn top(
+    ctx: Context<'_>,
+    #[description = "Optional user to filter by"]
+    #[lazy]
+    user: Option<serenity::UserId>,
+    #[description = "Optional channel to filter by"]
+    #[lazy]
+    channel: Option<serenity::ChannelId>,
+) -> Result<(), Error> {
+    // Defer the response to give more time for the command to execute
+    ctx.defer().await?;
+
+    let top_messages = ctx
+        .data()
+        .bestof
+        .lock()
+        .await
+        .get_top_reacted_messages(ctx.serenity_context(), user, channel)
+        .await?;
+
+    let mut embeds = Vec::new();
+    for message in top_messages {
+        embeds.push(message.create_embed()?);
+    }
+
+    match embeds.len() {
+        0 => {
+            ctx.reply("No messages found :(").await?;
+        }
+        _ => {
+            ctx.send(poise::CreateReply {
+                content: Some("*Top messages:*".to_string()),
+                embeds,
+                reply: true,
+                ..Default::default()
+            })
+            .await?;
+        }
+    }
+
     Ok(())
 }

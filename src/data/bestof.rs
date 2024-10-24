@@ -2,6 +2,7 @@ use crate::constants::QUOTES_CHANNEL_ID;
 use crate::data::db;
 
 use chrono::{DateTime, Utc};
+use futures::stream::StreamExt;
 use log::{debug, info, warn};
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{ChannelId, Context, Message, MessageId};
@@ -50,6 +51,41 @@ impl BestOfMessage {
             timestamp: message.timestamp.unix_timestamp() as f64, // Message timestamp
             image: message.attachments.first().map(|a| a.url.clone()), // Optional image URL from the attachments
         })
+    }
+
+    /// Create an embed for this message.
+    pub fn create_embed(&self) -> Result<serenity::CreateEmbed, Box<dyn Error + Send + Sync>> {
+        // Handle the timestamp
+        let timestamp_result =
+            serenity::model::Timestamp::from_unix_timestamp(self.timestamp as i64);
+
+        // Match on the result to handle the error appropriately
+        let timestamp = match timestamp_result {
+            Ok(ts) => ts,
+            Err(e) => return Err(Box::new(e)),
+        };
+
+        // Initialize the embed with the title and timestamp
+        let mut embed = serenity::CreateEmbed::default()
+            .title(format!("Message by {}", self.author))
+            .timestamp(timestamp)
+            .url(&self.link)
+            .footer(serenity::CreateEmbedFooter::new(format!(
+                "#{}",
+                &self.channel
+            )));
+
+        if let Some(attachment) = &self.image {
+            embed = embed.image(attachment.clone());
+        }
+
+        // Set the description
+        embed = embed.description(format!(
+            "{}\n\n-----\n*Total Number of Reactions:* {}",
+            self.content, self.count,
+        ));
+
+        Ok(embed)
     }
 }
 
@@ -200,8 +236,61 @@ impl BestOf {
 
         match self.runtime_db.values().choose(&mut rng) {
             None => Err("No messages available".into()), // Handle empty runtime_db case
-            Some(msg) => create_embed(msg),
+            Some(msg) => msg.create_embed(),
         }
+    }
+
+    /// Top 10 most reacted messages, optionally filtered.
+    pub async fn get_top_reacted_messages(
+        &self,
+        ctx: &Context,
+        user_id: Option<serenity::UserId>,
+        channel_id: Option<serenity::ChannelId>,
+    ) -> Result<Vec<BestOfMessage>, Box<dyn Error + Send + Sync>> {
+        let mut top_messages: Vec<BestOfMessage> = self.runtime_db.values().cloned().collect();
+
+        // Filter by user if provided
+        if let Some(user) = user_id {
+            let user_name = user.to_user(&ctx.http).await?.name;
+            top_messages = futures::stream::iter(top_messages)
+                .filter_map(|msg| {
+                    let user_name = user_name.clone();
+                    async move {
+                        if msg.author == user_name {
+                            Some(msg)
+                        } else {
+                            None
+                        }
+                    }
+                })
+                .collect()
+                .await;
+        }
+
+        // Filter by channel if provided
+        if let Some(channel) = channel_id {
+            let channel_name = match channel.to_channel(&ctx.http).await? {
+                serenity::Channel::Guild(channel) => channel.name.clone(),
+                serenity::Channel::Private(_) => "Private Channel".to_string(),
+                _ => "Unknown Channel".to_string(),
+            };
+            top_messages = futures::stream::iter(top_messages)
+                .filter_map(|msg| {
+                    let channel_name = channel_name.clone();
+                    async move {
+                        if msg.channel == channel_name {
+                            Some(msg)
+                        } else {
+                            None
+                        }
+                    }
+                })
+                .collect()
+                .await;
+        }
+
+        top_messages.sort_by(|a, b| b.count.cmp(&a.count));
+        Ok(top_messages.into_iter().take(10).collect())
     }
 }
 
@@ -442,7 +531,7 @@ pub async fn post_message_as_embed(
     channel_to_post_to: ChannelId,
     prelude: Option<String>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let embed = create_embed(message)?;
+    let embed = message.create_embed()?;
     let mut msg = serenity::CreateMessage::new().embed(embed);
 
     if let Some(content) = prelude {
@@ -452,43 +541,6 @@ pub async fn post_message_as_embed(
     channel_to_post_to.send_message(&ctx.http, msg).await?;
 
     Ok(())
-}
-
-/// Create an embed from a BestOfMessage.
-fn create_embed(
-    message: &BestOfMessage,
-) -> Result<serenity::CreateEmbed, Box<dyn Error + Send + Sync>> {
-    // Handle the timestamp
-    let timestamp_result =
-        serenity::model::Timestamp::from_unix_timestamp(message.timestamp as i64);
-
-    // Match on the result to handle the error appropriately
-    let timestamp = match timestamp_result {
-        Ok(ts) => ts,
-        Err(e) => return Err(Box::new(e)),
-    };
-
-    // Initialize the embed with the title and timestamp
-    let mut embed = serenity::CreateEmbed::default()
-        .title(format!("Message by {}", message.author))
-        .timestamp(timestamp)
-        .url(&message.link)
-        .footer(serenity::CreateEmbedFooter::new(format!(
-            "#{}",
-            &message.channel
-        )));
-
-    if let Some(attachment) = &message.image {
-        embed = embed.image(attachment.clone());
-    }
-
-    // Set the description
-    embed = embed.description(format!(
-        "{}\n\n-----\n*Total Number of Reactions:* {}",
-        message.content, message.count,
-    ));
-
-    Ok(embed)
 }
 
 /// Takes a Message and extracts the total count of reactions.
