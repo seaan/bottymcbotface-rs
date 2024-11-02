@@ -58,4 +58,28 @@ impl Quotes {
 
         Ok(quote)
     }
+
+    pub async fn add_quote(
+        &self,
+        quote: String,
+        author: String,
+    ) -> Result<QuoteMessage, sqlx::Error> {
+        let db_lock = self.db.lock().await;
+        let conn = db_lock.get_conn();
+
+        let query = "INSERT INTO quotes (quote, author) VALUES (?, ?)";
+        sqlx::query(query)
+            .bind(quote.clone())
+            .bind(author.clone())
+            .execute(conn)
+            .await?;
+
+        // readback the stored quote
+        let query = "SELECT * FROM quotes ORDER BY id DESC LIMIT 1";
+        let quote = sqlx::query_as::<_, QuoteMessage>(query)
+            .fetch_one(conn)
+            .await?;
+
+        Ok(quote)
+    }
 }
