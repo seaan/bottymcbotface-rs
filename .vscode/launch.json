@@ -8,8 +8,8 @@
             "type": "lldb",
             "request": "launch",
             "name": "Debug",
-            "program": "${workspaceRoot}/target/debug/${workspaceRootFolderName}",
-            "cwd": "${workspaceRoot}/target/debug/",
+            "program": "${workspaceFolder}/target/debug/${workspaceRootFolderName}",
+            "cwd": "${workspaceFolder}",
             "sourceLanguages": [
                 "rust"
             ]
