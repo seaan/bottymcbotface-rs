@@ -53,6 +53,7 @@ async fn main() {
             commands::register(),
             commands::orange(),
             commands::bestof_cmds::bestof(),
+            commands::quote_cmds::quote(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             edit_tracker: Some(Arc::new(poise::EditTracker::for_timespan(
@@ -116,6 +117,7 @@ async fn main() {
                     ctx.clone(),
                     Arc::clone(&data.db),
                     Arc::clone(&data.bestof),
+                    Arc::clone(&data.quotes),
                 )
                 .await;
                 Ok(data)

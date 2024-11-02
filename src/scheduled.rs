@@ -1,6 +1,7 @@
-use crate::constants::QUOTES_CHANNEL_ID;
+use crate::constants::get_update_channel_id;
 use crate::data::bestof::BestOf;
 use crate::data::db::BotDatabase;
+use crate::data::quotes::Quotes;
 
 use chrono::{Duration as ChronoDuration, Utc};
 use log::{error, info, warn};
@@ -13,7 +14,8 @@ pub async fn spawn_scheduled_tasks(
     ctx: serenity::Context,
     db: Arc<Mutex<BotDatabase>>,
     bestof: Arc<Mutex<BestOf>>,
-) -> tokio::task::JoinHandle<()> {
+    quotes: Arc<Mutex<Quotes>>,
+) {
     match load_from_database(db.clone(), bestof.clone()).await {
         Err(why) => error!("Failed to update from persistent database: {:#?}", why),
         Ok(_) => info!("Successfully pulled from persistent database!"),
@@ -26,7 +28,10 @@ pub async fn spawn_scheduled_tasks(
     tokio::spawn(persistent_database_update_task(db, bestof.clone()));
 
     // Spawn the daily bestof posting task
-    tokio::spawn(daily_bestof_task(ctx, bestof))
+    tokio::spawn(daily_bestof_task(ctx.clone(), bestof));
+
+    // Spawn the daily quote posting task
+    tokio::spawn(daily_quotes_task(ctx, quotes));
 }
 
 async fn load_from_database(
@@ -70,6 +75,35 @@ async fn daily_bestof_task(ctx: serenity::Context, bestof: Arc<Mutex<BestOf>>) {
     }
 }
 
+async fn daily_quotes_task(ctx: serenity::Context, quotes: Arc<Mutex<Quotes>>) {
+    loop {
+        // Calculate the duration until the next 15:00 UTC
+        let now = Utc::now();
+        let now_naive = now.naive_utc();
+        let next_3pm = now.date_naive().and_hms_opt(15, 0, 0).unwrap();
+        let duration_until_next_3pm = if now_naive.time() < next_3pm.time() {
+            next_3pm - now_naive
+        } else {
+            next_3pm + ChronoDuration::days(1) - now_naive
+        };
+
+        // Sleep until the next 15:00 UTC
+        let sleep_duration = duration_until_next_3pm
+            .to_std()
+            .unwrap_or_else(|_| Duration::from_secs(86400));
+        info!(
+            "Next posting at 15:00 UTC, sleeping for {:?}",
+            sleep_duration
+        );
+        sleep(sleep_duration).await;
+
+        // Post the daily bestof
+        if let Err(why) = post_daily_quote(&ctx, &quotes).await {
+            warn!("Failed to post daily quote: {:?}", why);
+        }
+    }
+}
+
 async fn search_new_bestof_task(ctx: serenity::Context, bestof: Arc<Mutex<BestOf>>) {
     loop {
         if let Err(why) = search_new_bestof(&ctx, &bestof).await {
@@ -98,7 +132,7 @@ async fn post_daily_bestof(
     ctx: &serenity::Context,
     bestof: &Arc<Mutex<BestOf>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let update_channel = serenity::ChannelId::new(QUOTES_CHANNEL_ID);
+    let update_channel = serenity::ChannelId::new(get_update_channel_id());
     let bestof_unlocked = bestof.lock().await;
 
     let embed = bestof_unlocked.get_random_bestof_embed().await?;
@@ -131,5 +165,22 @@ async fn update_bestof_persisted_db(
     bestof_unlocked
         .update_persisted_db(&mut db_unlocked)
         .await?;
+    Ok(())
+}
+
+async fn post_daily_quote(
+    ctx: &serenity::Context,
+    quote: &Arc<Mutex<Quotes>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let update_channel = serenity::ChannelId::new(get_update_channel_id());
+    let quote_unlocked = quote.lock().await;
+
+    let embed = quote_unlocked.get_random_quote(None).await?.create_embed();
+    let msg = serenity::CreateMessage::new()
+        .embed(embed)
+        .content(String::from("*Here's your daily quote:*"));
+
+    update_channel.send_message(&ctx.http, msg).await?;
+
     Ok(())
 }

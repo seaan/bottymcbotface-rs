@@ -1,4 +1,5 @@
 pub mod bestof_cmds;
+pub mod quote_cmds;
 
 use crate::{Context, Error};
 
