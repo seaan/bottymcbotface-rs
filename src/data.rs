@@ -1,6 +1,7 @@
 pub mod bestof;
 pub mod db;
 pub mod quotes;
+pub mod requests;
 
 use crate::events::mentionme::RobotQuotes;
 
@@ -13,6 +14,7 @@ pub struct Data {
     pub quotes_for_response: Mutex<RobotQuotes>,
     pub bestof: Arc<Mutex<bestof::BestOf>>,
     pub quotes: Arc<Mutex<quotes::Quotes>>,
+    pub requests: Arc<Mutex<requests::Requests>>,
 }
 
 impl Data {
@@ -22,7 +24,8 @@ impl Data {
             db: db.clone(),
             quotes_for_response: Mutex::new(RobotQuotes::new()),
             bestof: Arc::new(Mutex::new(bestof::BestOf::new())),
-            quotes: Arc::new(Mutex::new(quotes::Quotes::new(db))),
+            quotes: Arc::new(Mutex::new(quotes::Quotes::new(db.clone()))),
+            requests: Arc::new(Mutex::new(requests::Requests::new(db))),
         }
     }
 }

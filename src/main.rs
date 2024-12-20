@@ -54,6 +54,7 @@ async fn main() {
             commands::orange(),
             commands::bestof_cmds::bestof(),
             commands::quote_cmds::quote(),
+            commands::request_cmds::request(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             edit_tracker: Some(Arc::new(poise::EditTracker::for_timespan(
