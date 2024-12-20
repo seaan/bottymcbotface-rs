@@ -79,7 +79,7 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
         let reqs = ctx.data().requests.lock().await.get_requests().await?;
         let request_list = reqs
             .iter()
-            .map(|request| format!("{}", request))
+            .map(|request| request.request.to_string())
             .collect::<Vec<_>>()
             .join("\n");
 
