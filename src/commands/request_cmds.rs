@@ -50,7 +50,7 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
                     request.id
                 ))
                 .style(serenity::ButtonStyle::Primary)
-                .label(format!("{}", request))])
+                .label(request.request.to_string())])
             })
             .collect::<Vec<_>>();
 
@@ -79,7 +79,7 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
         let reqs = ctx.data().requests.lock().await.get_requests().await?;
         let request_list = reqs
             .iter()
-            .map(|request| request.request.to_string())
+            .map(|request| request.to_string())
             .collect::<Vec<_>>()
             .join("\n");
 
