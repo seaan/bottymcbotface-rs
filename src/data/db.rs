@@ -34,12 +34,12 @@ impl BotDatabase {
     }
 
     pub async fn run_migration(&self) -> Result<(), sqlx::Error> {
+        use sqlx::migrate::Migrator;
         use std::path::Path;
         let migrations_path = Path::new("./data/db/migrations");
         if migrations_path.exists() {
-            sqlx::migrate!("./data/db/migrations")
-                .run(&self.conn)
-                .await?;
+            let migrator = Migrator::new(migrations_path).await?;
+            migrator.run(&self.conn).await?;
             Ok(())
         } else {
             info!("Skipping migrations: migrations directory does not exist.");
