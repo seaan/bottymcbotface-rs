@@ -48,6 +48,8 @@ jobs:
         with:
           name: Binary
           path: ./release
+      - name: List files in release directory
+        run: ls -l ./release
       - name: Unzip artifact
         run: |
           unzip -o ./release/Binary.zip -d ./release
