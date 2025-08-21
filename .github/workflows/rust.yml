@@ -16,10 +16,10 @@ jobs:
       fail-fast: true
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - run: rustup toolchain install stable --profile minimal\
     - name: Rust Cache
-      uses: Swatinem/rust-cache@v2.7.5
+      uses: Swatinem/rust-cache@v2.8.0
     - name: Compile
       id: compile
       # You may pin to the exact commit or the version.

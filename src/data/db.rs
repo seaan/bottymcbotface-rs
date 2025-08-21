@@ -34,10 +34,17 @@ impl BotDatabase {
     }
 
     pub async fn run_migration(&self) -> Result<(), sqlx::Error> {
-        sqlx::migrate!("./data/db/migrations")
-            .run(&self.conn)
-            .await?;
-        Ok(())
+        use std::path::Path;
+        let migrations_path = Path::new("./data/db/migrations");
+        if migrations_path.exists() {
+            sqlx::migrate!("./data/db/migrations")
+                .run(&self.conn)
+                .await?;
+            Ok(())
+        } else {
+            info!("Skipping migrations: migrations directory does not exist.");
+            Ok(())
+        }
     }
 
     /// Load all rows from any given table.
