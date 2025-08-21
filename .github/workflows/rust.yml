@@ -48,6 +48,10 @@ jobs:
         with:
           name: Binary
           path: ./release
+      - name: Unzip artifact
+        run: |
+          unzip -o ./release/Binary.zip -d ./release
+        shell: bash
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -64,6 +68,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./release/bottymcbotface-rs.tar.gz
+          asset_path: ./release/bottymcbotface-rs
           asset_name: bottymcbotface-rs
           asset_content_type: application/octet-stream
