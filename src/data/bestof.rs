@@ -128,10 +128,15 @@ impl BestOf {
         let mut new_messages = Vec::new();
 
         for (channel_id, mut messages) in current_messages.drain() {
+            let channel_name = match channel_id.to_channel(ctx).await {
+                Ok(serenity::Channel::Guild(channel)) => channel.name.clone(),
+                Ok(serenity::Channel::Private(_)) => "Private Channel".to_string(),
+                _ => "Unknown Channel".to_string(),
+            };
             match self.update_messages_for_channel(ctx, &mut messages).await {
                 Err(why) => warn!(
-                    "Failed to update runtime db for channel {channel_id}: {:#?}",
-                    why
+                    "Failed to update runtime db for channel '{}' (ID: {}): {:#?}",
+                    channel_name, channel_id, why
                 ),
                 Ok(mut new_messages_for_channel) => {
                     debug!("Found new messages {:#?}", new_messages_for_channel);
