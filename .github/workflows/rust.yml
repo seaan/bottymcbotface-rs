@@ -36,3 +36,34 @@ jobs:
           ${{ steps.compile.outputs.BUILT_ARCHIVE }}
           ${{ steps.compile.outputs.BUILT_CHECKSUM }}
         if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Binary
+          path: ./release
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release v${{ github.run_number }}
+          draft: false
+          prerelease: false
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release/bottymcbotface-rs.tar.gz
+          asset_name: bottymcbotface-rs
+          asset_content_type: application/octet-stream
