@@ -52,7 +52,7 @@ jobs:
         run: ls -l ./release
       - name: Unzip artifact
         run: |
-          unzip -o ./release/Binary.zip -d ./release
+          unzip -o ./release/bottymcbotface-rs_null_x86_64-unknown-linux-musl.zip -d ./release
         shell: bash
       - name: Create Release
         id: create_release
