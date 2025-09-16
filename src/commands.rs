@@ -1,6 +1,7 @@
 pub mod bestof_cmds;
 pub mod quote_cmds;
 pub mod request_cmds;
+pub mod gamenight_cmds;
 
 use crate::{Context, Error};
 
@@ -36,3 +37,5 @@ pub async fn register(ctx: Context<'_>) -> Result<(), Error> {
     poise::builtins::register_application_commands_buttons(ctx).await?;
     Ok(())
 }
+
+pub use gamenight_cmds::{gamenight, suggest};
