@@ -26,9 +26,9 @@ pub async fn vote(
     ctx: Context<'_>,
     #[description = "When will the game night occur?"] time: String,
 ) -> Result<(), Error> {
-    use serenity::model::channel::{Poll, PollAnswer, PollMedia, PollLayoutType};
-    use serenity::model::timestamp::Timestamp;
     use chrono::{DateTime, Local, NaiveDateTime, TimeZone};
+    use serenity::model::channel::{Poll, PollAnswer, PollLayoutType, PollMedia};
+    use serenity::model::timestamp::Timestamp;
     let mut suggestions = GAME_SUGGESTIONS.lock().unwrap();
     if suggestions.is_empty() {
         ctx.reply("No game suggestions to vote on!").await?;
@@ -36,12 +36,13 @@ pub async fn vote(
     }
 
     // Build PollAnswers from suggestions
-    let answers: Vec<PollAnswer> = suggestions.iter().map(|s| {
-        PollAnswer {
+    let answers: Vec<PollAnswer> = suggestions
+        .iter()
+        .map(|s| PollAnswer {
             answer_text: PollMedia::from_text(format!("{} {}", s.emoji, s.name)),
             ..Default::default()
-        }
-    }).collect();
+        })
+        .collect();
 
     let poll_title = format!("Gamenight Vote! Time: {}", time);
 
@@ -89,6 +90,10 @@ pub async fn suggest(
         let mut suggestions = GAME_SUGGESTIONS.lock().unwrap();
         suggestions.push(suggestion);
     }
-    ctx.reply(format!("Game '{}' with emoji '{}' has been suggested!", name, emoji)).await?;
+    ctx.reply(format!(
+        "Game '{}' with emoji '{}' has been suggested!",
+        name, emoji
+    ))
+    .await?;
     Ok(())
 }
