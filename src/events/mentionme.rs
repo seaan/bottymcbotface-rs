@@ -3,9 +3,7 @@ use std::fs;
 use crate::Error;
 use log::info;
 use poise::serenity_prelude as serenity;
-
-use rand::seq::SliceRandom;
-use rand::thread_rng;
+use rand::seq::IndexedRandom;
 
 pub async fn handle_mention_event(
     ctx: serenity::Context,
@@ -43,7 +41,7 @@ impl RobotQuotes {
     pub async fn get_quote(&mut self) -> Result<Option<&str>, Error> {
         self.ensure_loaded().await?;
 
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         if let Some(lines) = &self.lines {
             // Choose a random line if the file is loaded
             Ok(lines.choose(&mut rng).map(|s| s.as_str()))

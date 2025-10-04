@@ -6,9 +6,7 @@ use futures::stream::StreamExt;
 use log::{debug, info, warn};
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{ChannelId, Context, Message, MessageId};
-use rand::rngs::{OsRng, StdRng};
 use rand::seq::IteratorRandom;
-use rand::SeedableRng;
 use sqlx::FromRow;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
@@ -237,8 +235,7 @@ impl BestOf {
     pub async fn get_random_bestof_embed(
         &self,
     ) -> Result<serenity::CreateEmbed, Box<dyn Error + Send + Sync>> {
-        let mut rng = StdRng::from_rng(OsRng)?;
-
+        let mut rng = rand::rng();
         match self.runtime_db.values().choose(&mut rng) {
             None => Err("No messages available".into()), // Handle empty runtime_db case
             Some(msg) => msg.create_embed(),
@@ -373,7 +370,7 @@ async fn count_current_reactions_across_channels(
     futures::future::join_all(tasks).await;
 
     let list_of_messages = reacted_messages_per_channel.lock().await;
-    if list_of_messages.len() > 0 {
+    if !list_of_messages.is_empty() {
         debug!("Found reacted messages: {:#?}", list_of_messages);
     } else {
         info!("Couldn't find any reacted messages");

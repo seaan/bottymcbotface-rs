@@ -38,4 +38,3 @@ pub async fn register(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-pub use gamenight_cmds::{gamenight, suggest};
