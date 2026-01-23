@@ -80,7 +80,7 @@ async fn daily_quotes_task(ctx: serenity::Context, quotes: Arc<Mutex<Quotes>>) {
         // Calculate the duration until the next 15:00 UTC
         let now = Utc::now();
         let now_naive = now.naive_utc();
-        let next_3pm = now.date_naive().and_hms_opt(15, 0, 0).unwrap();
+        let next_3pm = now.date_naive().and_hms_opt(15, 0, 5).unwrap();
         let duration_until_next_3pm = if now_naive.time() < next_3pm.time() {
             next_3pm - now_naive
         } else {
