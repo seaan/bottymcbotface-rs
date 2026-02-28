@@ -1,0 +1,75 @@
+:root {
+  --bg: #f4efe4;
+  --fg: #1e1b18;
+  --panel: #fffdf7;
+  --accent: #205a43;
+  --muted: #6f6a63;
+  --selected: #c0e3d5;
+  --border: #d8d0c4;
+}
+
+body {
+  margin: 0;
+  font-family: "Georgia", "Times New Roman", serif;
+  color: var(--fg);
+  background: radial-gradient(circle at top, #fff6de 0%, var(--bg) 70%);
+}
+
+.shell {
+  max-width: 900px;
+  margin: 24px auto;
+  padding: 20px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 12px;
+}
+
+label {
+  display: block;
+  margin-bottom: 8px;
+}
+
+input {
+  width: 100%;
+  max-width: 320px;
+  padding: 8px;
+}
+
+button {
+  background: var(--accent);
+  color: white;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+#calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.day {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  user-select: none;
+  cursor: pointer;
+  background: #fff;
+}
+
+.day.selected {
+  background: var(--selected);
+  border-color: var(--accent);
+}
+
+#save-status {
+  color: var(--muted);
+  min-height: 24px;
+}

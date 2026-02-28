@@ -14,7 +14,7 @@ serenity = { version = "*", features = [
 ] }
 
 # Asynchronous runtime
-tokio = { version = "*", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "*", features = ["macros", "rt-multi-thread", "net"] }
 
 # Command framework
 poise = "*"

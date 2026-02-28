@@ -124,6 +124,13 @@ async fn main() {
                     Arc::clone(&data.quotes),
                 )
                 .await;
+
+                let dnd_repo = Arc::clone(&data.dnd);
+                tokio::spawn(async move {
+                    if let Err(why) = web::run_server(dnd_repo).await {
+                        error!("Dnd web server failed: {:?}", why);
+                    }
+                });
                 Ok(data)
             })
         })

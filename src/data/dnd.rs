@@ -1,6 +1,8 @@
 use chrono::{Datelike, Duration, NaiveDate, Utc};
+use serde::Serialize;
 use sqlx::{FromRow, Pool, Sqlite};
 
+#[cfg(test)]
 const DND_SCHEMA_SQL: &str = include_str!("../../data/db/migrations/202602280001_dnd_month_planner.sql");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,7 +100,7 @@ pub struct DndParticipant {
     pub edit_token: String,
 }
 
-#[derive(FromRow, Debug, Clone, PartialEq, Eq)]
+#[derive(FromRow, Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RankedDate {
     pub date: String,
     pub count: i64,
@@ -115,6 +117,7 @@ impl DndRepository {
         Self { pool }
     }
 
+    #[cfg(test)]
     pub async fn init_for_tests(&self) -> Result<(), sqlx::Error> {
         sqlx::raw_sql(DND_SCHEMA_SQL).execute(&self.pool).await?;
         Ok(())
@@ -148,6 +151,30 @@ impl DndRepository {
         .await
     }
 
+    pub async fn month_by_access_token(&self, access_token: &str) -> Result<Option<DndMonth>, sqlx::Error> {
+        sqlx::query_as::<_, DndMonth>(
+            "SELECT id, guild_id, month, access_token
+             FROM dnd_months
+             WHERE access_token = ?
+             LIMIT 1",
+        )
+        .bind(access_token)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn month_by_id(&self, month_id: i64) -> Result<Option<DndMonth>, sqlx::Error> {
+        sqlx::query_as::<_, DndMonth>(
+            "SELECT id, guild_id, month, access_token
+             FROM dnd_months
+             WHERE id = ?
+             LIMIT 1",
+        )
+        .bind(month_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
     pub async fn ensure_participant(&self, month_id: i64, name: &str) -> Result<DndParticipant, sqlx::Error> {
         let now = Utc::now().timestamp();
 
@@ -173,6 +200,38 @@ impl DndRepository {
         .bind(month_id)
         .bind(name)
         .fetch_one(&self.pool)
+        .await
+    }
+
+    pub async fn participant_by_month_and_name(
+        &self,
+        month_id: i64,
+        name: &str,
+    ) -> Result<Option<DndParticipant>, sqlx::Error> {
+        sqlx::query_as::<_, DndParticipant>(
+            "SELECT id, month_id, name, edit_token
+             FROM dnd_participants
+             WHERE month_id = ? AND name = ?
+             LIMIT 1",
+        )
+        .bind(month_id)
+        .bind(name)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn participant_by_edit_token(
+        &self,
+        edit_token: &str,
+    ) -> Result<Option<DndParticipant>, sqlx::Error> {
+        sqlx::query_as::<_, DndParticipant>(
+            "SELECT id, month_id, name, edit_token
+             FROM dnd_participants
+             WHERE edit_token = ?
+             LIMIT 1",
+        )
+        .bind(edit_token)
+        .fetch_optional(&self.pool)
         .await
     }
 
@@ -330,6 +389,33 @@ impl DndRepository {
             participants: participants.0,
             availability_rows: availability_rows.0,
         })
+    }
+
+    pub async fn summary_for_month_id(&self, month_id: i64) -> Result<Vec<RankedDate>, sqlx::Error> {
+        sqlx::query_as::<_, RankedDate>(
+            "SELECT a.date as date, COUNT(DISTINCT p.id) as count
+             FROM dnd_participants p
+             JOIN dnd_availability a ON a.participant_id = p.id
+             WHERE p.month_id = ?
+             GROUP BY a.date
+             ORDER BY count DESC, a.date ASC",
+        )
+        .bind(month_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn participant_count_for_month_id(&self, month_id: i64) -> Result<i64, sqlx::Error> {
+        let row = sqlx::query_as::<_, (i64,)>(
+            "SELECT COUNT(*)
+             FROM dnd_participants
+             WHERE month_id = ?",
+        )
+        .bind(month_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row.0)
     }
 }
 
