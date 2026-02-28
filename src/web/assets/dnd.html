@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DnD Availability</title>
+  <link rel="stylesheet" href="/assets/dnd.css" />
+</head>
+<body>
+  <main class="shell">
+    <h1>DnD Availability Planner</h1>
+    <p id="month-token" data-month-token="{{MONTH_TOKEN}}"></p>
+
+    <section id="login-panel" class="panel">
+      <h2>Login</h2>
+      <label>Name <input id="name" type="text" /></label>
+      <label>Code <input id="code" type="text" /></label>
+      <button id="login-btn">Open My Calendar</button>
+      <p id="login-status"></p>
+    </section>
+
+    <section id="calendar-panel" class="panel" hidden>
+      <h2>Dates</h2>
+      <div id="calendar-grid"></div>
+      <p id="save-status">Saved</p>
+    </section>
+  </main>
+  <script type="module" src="/assets/dnd.js"></script>
+</body>
+</html>
