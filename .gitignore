@@ -2,3 +2,5 @@
 .env
 data/db/*.db*
 .worktrees/
+
+docs/plans/*.md
