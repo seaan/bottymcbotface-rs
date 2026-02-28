@@ -220,6 +220,48 @@ impl DndRepository {
             Ok(false)
         }
     }
+
+    pub async fn set_day_available(&self, participant_id: i64, date: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO dnd_availability (participant_id, date, created_at)
+             VALUES (?, ?, ?)
+             ON CONFLICT(participant_id, date) DO NOTHING",
+        )
+        .bind(participant_id)
+        .bind(date)
+        .bind(Utc::now().timestamp())
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn set_day_unavailable(&self, participant_id: i64, date: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "DELETE FROM dnd_availability
+             WHERE participant_id = ? AND date = ?",
+        )
+        .bind(participant_id)
+        .bind(date)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn selected_dates(&self, participant_id: i64) -> Result<Vec<String>, sqlx::Error> {
+        let rows = sqlx::query_as::<_, (String,)>(
+            "SELECT date
+             FROM dnd_availability
+             WHERE participant_id = ?
+             ORDER BY date ASC",
+        )
+        .bind(participant_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows.into_iter().map(|row| row.0).collect())
+    }
 }
 
 #[cfg(test)]
@@ -313,5 +355,24 @@ mod tests {
             .validate_login_code(participant.id, &code)
             .await
             .unwrap());
+    }
+
+    #[tokio::test]
+    async fn toggling_day_updates_only_target_day() {
+        let repo = test_repo().await;
+        let participant = seed_participant(&repo).await;
+
+        repo.set_day_available(participant.id, "2026-03-10")
+            .await
+            .unwrap();
+        repo.set_day_available(participant.id, "2026-03-11")
+            .await
+            .unwrap();
+        repo.set_day_unavailable(participant.id, "2026-03-10")
+            .await
+            .unwrap();
+
+        let dates = repo.selected_dates(participant.id).await.unwrap();
+        assert_eq!(dates, vec!["2026-03-11".to_string()]);
     }
 }
