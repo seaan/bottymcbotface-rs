@@ -3,6 +3,7 @@ mod constants;
 mod data;
 mod events;
 mod scheduled;
+mod web;
 
 use log::{error, info};
 use poise::serenity_prelude as serenity;

@@ -1,4 +1,5 @@
 pub mod bestof_cmds;
+pub mod dnd_cmds;
 pub mod gamenight_cmds;
 pub mod quote_cmds;
 pub mod request_cmds;
@@ -37,4 +38,3 @@ pub async fn register(ctx: Context<'_>) -> Result<(), Error> {
     poise::builtins::register_application_commands_buttons(ctx).await?;
     Ok(())
 }
-
