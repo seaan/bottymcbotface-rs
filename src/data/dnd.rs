@@ -1,4 +1,4 @@
-use chrono::{Datelike, NaiveDate, Utc};
+use chrono::{Datelike, Duration, NaiveDate, Utc};
 use sqlx::{FromRow, Pool, Sqlite};
 
 const DND_SCHEMA_SQL: &str = include_str!("../../data/db/migrations/202602280001_dnd_month_planner.sql");
@@ -163,6 +163,63 @@ impl DndRepository {
         .fetch_one(&self.pool)
         .await
     }
+
+    pub async fn issue_login_code(
+        &self,
+        participant_id: i64,
+        ttl: Duration,
+    ) -> Result<String, sqlx::Error> {
+        let code = uuid::Uuid::new_v4().simple().to_string()[0..8].to_ascii_uppercase();
+        let now = Utc::now().timestamp();
+        let expires_at = (Utc::now() + ttl).timestamp();
+
+        sqlx::query(
+            "INSERT INTO dnd_login_codes (participant_id, code, expires_at, created_at, used_count)
+             VALUES (?, ?, ?, ?, 0)",
+        )
+        .bind(participant_id)
+        .bind(&code)
+        .bind(expires_at)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(code)
+    }
+
+    pub async fn validate_login_code(
+        &self,
+        participant_id: i64,
+        code: &str,
+    ) -> Result<bool, sqlx::Error> {
+        let now = Utc::now().timestamp();
+        let exists = sqlx::query_as::<_, (i64,)>(
+            "SELECT 1
+             FROM dnd_login_codes
+             WHERE participant_id = ? AND code = ? AND expires_at >= ?
+             LIMIT 1",
+        )
+        .bind(participant_id)
+        .bind(code)
+        .bind(now)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if exists.is_some() {
+            sqlx::query(
+                "UPDATE dnd_login_codes
+                 SET used_count = used_count + 1
+                 WHERE participant_id = ? AND code = ?",
+            )
+            .bind(participant_id)
+            .bind(code)
+            .execute(&self.pool)
+            .await?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -202,6 +259,11 @@ mod tests {
         repo
     }
 
+    async fn seed_participant(repo: &DndRepository) -> super::DndParticipant {
+        let month = repo.ensure_month("123", MonthKey::March).await.unwrap();
+        repo.ensure_participant(month.id, "sean").await.unwrap()
+    }
+
     #[tokio::test]
     async fn ensure_month_creates_once_per_guild() {
         let repo = test_repo().await;
@@ -217,5 +279,39 @@ mod tests {
         let first = repo.ensure_participant(month.id, "sean").await.unwrap();
         let second = repo.ensure_participant(month.id, "sean").await.unwrap();
         assert_eq!(first.id, second.id);
+    }
+
+    #[tokio::test]
+    async fn code_is_valid_multiple_times_before_expiry() {
+        let repo = test_repo().await;
+        let participant = seed_participant(&repo).await;
+        let code = repo
+            .issue_login_code(participant.id, chrono::Duration::minutes(15))
+            .await
+            .unwrap();
+
+        assert!(repo
+            .validate_login_code(participant.id, &code)
+            .await
+            .unwrap());
+        assert!(repo
+            .validate_login_code(participant.id, &code)
+            .await
+            .unwrap());
+    }
+
+    #[tokio::test]
+    async fn expired_code_is_rejected() {
+        let repo = test_repo().await;
+        let participant = seed_participant(&repo).await;
+        let code = repo
+            .issue_login_code(participant.id, chrono::Duration::seconds(-1))
+            .await
+            .unwrap();
+
+        assert!(!repo
+            .validate_login_code(participant.id, &code)
+            .await
+            .unwrap());
     }
 }
