@@ -12,6 +12,7 @@ use tokio::sync::Mutex;
 // Custom user data passed to all command functions
 pub struct Data {
     pub db: Arc<Mutex<db::BotDatabase>>,
+    pub dnd: Arc<dnd::DndRepository>,
     pub quotes_for_response: Mutex<RobotQuotes>,
     pub bestof: Arc<Mutex<bestof::BestOf>>,
     pub quotes: Arc<Mutex<quotes::Quotes>>,
@@ -20,9 +21,12 @@ pub struct Data {
 
 impl Data {
     pub fn new() -> Data {
-        let db = Arc::new(Mutex::new(db::BotDatabase::new()));
+        let runtime_db = db::BotDatabase::new();
+        let db_conn = runtime_db.get_conn().clone();
+        let db = Arc::new(Mutex::new(runtime_db));
         Data {
             db: db.clone(),
+            dnd: Arc::new(dnd::DndRepository::new(db_conn)),
             quotes_for_response: Mutex::new(RobotQuotes::new()),
             bestof: Arc::new(Mutex::new(bestof::BestOf::new())),
             quotes: Arc::new(Mutex::new(quotes::Quotes::new(db.clone()))),
