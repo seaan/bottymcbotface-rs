@@ -1,6 +1,7 @@
-use chrono::{Datelike, NaiveDate};
+use chrono::{Datelike, NaiveDate, Utc};
+use sqlx::{FromRow, Pool, Sqlite};
 
-pub struct DndData;
+const DND_SCHEMA_SQL: &str = include_str!("../../data/db/migrations/202602280001_dnd_month_planner.sql");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MonthKey {
@@ -53,17 +54,122 @@ impl MonthKey {
             Self::December => 12,
         }
     }
+
+    pub fn canonical_name(self) -> &'static str {
+        match self {
+            Self::January => "january",
+            Self::February => "february",
+            Self::March => "march",
+            Self::April => "april",
+            Self::May => "may",
+            Self::June => "june",
+            Self::July => "july",
+            Self::August => "august",
+            Self::September => "september",
+            Self::October => "october",
+            Self::November => "november",
+            Self::December => "december",
+        }
+    }
 }
 
 pub fn is_read_only(month: MonthKey, now: NaiveDate) -> bool {
     month.number() < now.month()
 }
 
+#[derive(Clone)]
+pub struct DndRepository {
+    pool: Pool<Sqlite>,
+}
+
+#[derive(FromRow, Debug, Clone)]
+pub struct DndMonth {
+    pub id: i64,
+    pub guild_id: String,
+    pub month: String,
+    pub access_token: String,
+}
+
+#[derive(FromRow, Debug, Clone)]
+pub struct DndParticipant {
+    pub id: i64,
+    pub month_id: i64,
+    pub name: String,
+    pub edit_token: String,
+}
+
+impl DndRepository {
+    pub fn new(pool: Pool<Sqlite>) -> Self {
+        Self { pool }
+    }
+
+    pub async fn init_for_tests(&self) -> Result<(), sqlx::Error> {
+        sqlx::raw_sql(DND_SCHEMA_SQL).execute(&self.pool).await?;
+        Ok(())
+    }
+
+    pub async fn ensure_month(&self, guild_id: &str, month: MonthKey) -> Result<DndMonth, sqlx::Error> {
+        let now = Utc::now().timestamp();
+        let token = uuid::Uuid::new_v4().to_string();
+
+        sqlx::query(
+            "INSERT INTO dnd_months (guild_id, month, title, access_token, created_at)
+             VALUES (?, ?, NULL, ?, ?)
+             ON CONFLICT(guild_id, month) DO NOTHING",
+        )
+        .bind(guild_id)
+        .bind(month.canonical_name())
+        .bind(token)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query_as::<_, DndMonth>(
+            "SELECT id, guild_id, month, access_token
+             FROM dnd_months
+             WHERE guild_id = ? AND month = ?
+             LIMIT 1",
+        )
+        .bind(guild_id)
+        .bind(month.canonical_name())
+        .fetch_one(&self.pool)
+        .await
+    }
+
+    pub async fn ensure_participant(&self, month_id: i64, name: &str) -> Result<DndParticipant, sqlx::Error> {
+        let now = Utc::now().timestamp();
+
+        sqlx::query(
+            "INSERT INTO dnd_participants (month_id, name, edit_token, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(month_id, name) DO NOTHING",
+        )
+        .bind(month_id)
+        .bind(name)
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(now)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query_as::<_, DndParticipant>(
+            "SELECT id, month_id, name, edit_token
+             FROM dnd_participants
+             WHERE month_id = ? AND name = ?
+             LIMIT 1",
+        )
+        .bind(month_id)
+        .bind(name)
+        .fetch_one(&self.pool)
+        .await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
 
-    use super::{is_read_only, MonthKey};
+    use super::{is_read_only, DndRepository, MonthKey};
 
     #[test]
     fn month_parses_case_insensitive() {
@@ -82,5 +188,34 @@ mod tests {
         assert!(is_read_only(MonthKey::March, now));
         assert!(!is_read_only(MonthKey::April, now));
         assert!(!is_read_only(MonthKey::December, now));
+    }
+
+    async fn test_repo() -> DndRepository {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+
+        let repo = DndRepository::new(pool);
+        repo.init_for_tests().await.unwrap();
+        repo
+    }
+
+    #[tokio::test]
+    async fn ensure_month_creates_once_per_guild() {
+        let repo = test_repo().await;
+        let first = repo.ensure_month("123", MonthKey::March).await.unwrap();
+        let second = repo.ensure_month("123", MonthKey::March).await.unwrap();
+        assert_eq!(first.id, second.id);
+    }
+
+    #[tokio::test]
+    async fn ensure_participant_creates_once_per_name() {
+        let repo = test_repo().await;
+        let month = repo.ensure_month("123", MonthKey::March).await.unwrap();
+        let first = repo.ensure_participant(month.id, "sean").await.unwrap();
+        let second = repo.ensure_participant(month.id, "sean").await.unwrap();
+        assert_eq!(first.id, second.id);
     }
 }
