@@ -98,6 +98,18 @@ pub struct DndParticipant {
     pub edit_token: String,
 }
 
+#[derive(FromRow, Debug, Clone, PartialEq, Eq)]
+pub struct RankedDate {
+    pub date: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MonthStatus {
+    pub participants: i64,
+    pub availability_rows: i64,
+}
+
 impl DndRepository {
     pub fn new(pool: Pool<Sqlite>) -> Self {
         Self { pool }
@@ -262,6 +274,63 @@ impl DndRepository {
 
         Ok(rows.into_iter().map(|row| row.0).collect())
     }
+
+    pub async fn top_dates_for_month(
+        &self,
+        guild_id: &str,
+        month: MonthKey,
+        limit: i64,
+    ) -> Result<Vec<RankedDate>, sqlx::Error> {
+        sqlx::query_as::<_, RankedDate>(
+            "SELECT a.date as date, COUNT(DISTINCT p.id) as count
+             FROM dnd_months m
+             JOIN dnd_participants p ON p.month_id = m.id
+             JOIN dnd_availability a ON a.participant_id = p.id
+             WHERE m.guild_id = ? AND m.month = ?
+             GROUP BY a.date
+             ORDER BY count DESC, a.date ASC
+             LIMIT ?",
+        )
+        .bind(guild_id)
+        .bind(month.canonical_name())
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn month_status(
+        &self,
+        guild_id: &str,
+        month: MonthKey,
+    ) -> Result<MonthStatus, sqlx::Error> {
+        let participants = sqlx::query_as::<_, (i64,)>(
+            "SELECT COUNT(*)
+             FROM dnd_participants p
+             JOIN dnd_months m ON p.month_id = m.id
+             WHERE m.guild_id = ? AND m.month = ?",
+        )
+        .bind(guild_id)
+        .bind(month.canonical_name())
+        .fetch_one(&self.pool)
+        .await?;
+
+        let availability_rows = sqlx::query_as::<_, (i64,)>(
+            "SELECT COUNT(*)
+             FROM dnd_availability a
+             JOIN dnd_participants p ON a.participant_id = p.id
+             JOIN dnd_months m ON p.month_id = m.id
+             WHERE m.guild_id = ? AND m.month = ?",
+        )
+        .bind(guild_id)
+        .bind(month.canonical_name())
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(MonthStatus {
+            participants: participants.0,
+            availability_rows: availability_rows.0,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -304,6 +373,26 @@ mod tests {
     async fn seed_participant(repo: &DndRepository) -> super::DndParticipant {
         let month = repo.ensure_month("123", MonthKey::March).await.unwrap();
         repo.ensure_participant(month.id, "sean").await.unwrap()
+    }
+
+    async fn seeded_ranking_repo() -> DndRepository {
+        let repo = test_repo().await;
+        let month = repo.ensure_month("123", MonthKey::March).await.unwrap();
+
+        let p1 = repo.ensure_participant(month.id, "p1").await.unwrap();
+        let p2 = repo.ensure_participant(month.id, "p2").await.unwrap();
+        let p3 = repo.ensure_participant(month.id, "p3").await.unwrap();
+        let p4 = repo.ensure_participant(month.id, "p4").await.unwrap();
+
+        for pid in [p1.id, p2.id, p3.id] {
+            repo.set_day_available(pid, "2026-03-12").await.unwrap();
+        }
+        for pid in [p1.id, p2.id, p4.id] {
+            repo.set_day_available(pid, "2026-03-13").await.unwrap();
+        }
+        repo.set_day_available(p1.id, "2026-03-20").await.unwrap();
+
+        repo
     }
 
     #[tokio::test]
@@ -374,5 +463,23 @@ mod tests {
 
         let dates = repo.selected_dates(participant.id).await.unwrap();
         assert_eq!(dates, vec!["2026-03-11".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn results_rank_by_count_then_date() {
+        let repo = seeded_ranking_repo().await;
+        let top = repo.top_dates_for_month("123", MonthKey::March, 2).await.unwrap();
+
+        assert_eq!(top[0].date, "2026-03-12");
+        assert_eq!(top[0].count, 3);
+        assert_eq!(top[1].date, "2026-03-13");
+        assert_eq!(top[1].count, 3);
+    }
+
+    #[tokio::test]
+    async fn status_returns_distinct_participant_count() {
+        let repo = seeded_ranking_repo().await;
+        let status = repo.month_status("123", MonthKey::March).await.unwrap();
+        assert_eq!(status.participants, 4);
     }
 }
