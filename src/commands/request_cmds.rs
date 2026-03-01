@@ -1,5 +1,5 @@
 use crate::{Context, Error};
-use poise::{serenity_prelude as serenity, CreateReply};
+use poise::{CreateReply, serenity_prelude as serenity};
 
 /// Bot feature request by voting.
 #[poise::command(slash_command, track_edits, subcommands("add", "vote", "complete"))]
@@ -45,12 +45,11 @@ pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
         let components = requests
             .iter()
             .map(|request| {
-                serenity::CreateActionRow::Buttons(vec![serenity::CreateButton::new(format!(
-                    "{}",
-                    request.id
-                ))
-                .style(serenity::ButtonStyle::Primary)
-                .label(request.request.to_string())])
+                serenity::CreateActionRow::Buttons(vec![
+                    serenity::CreateButton::new(format!("{}", request.id))
+                        .style(serenity::ButtonStyle::Primary)
+                        .label(request.request.to_string()),
+                ])
             })
             .collect::<Vec<_>>();
 

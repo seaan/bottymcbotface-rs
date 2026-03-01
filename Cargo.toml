@@ -2,7 +2,7 @@
 name = "bottymcbotface-rs"
 version = "1.0.0"
 authors = ["Sean Widmier <seanwidmier@gmail.com>"]
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 # Discord bot framework

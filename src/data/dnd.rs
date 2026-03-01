@@ -3,7 +3,8 @@ use serde::Serialize;
 use sqlx::{FromRow, Pool, Sqlite};
 
 #[cfg(test)]
-const DND_SCHEMA_SQL: &str = include_str!("../../data/db/migrations/202602280001_dnd_month_planner.sql");
+const DND_SCHEMA_SQL: &str =
+    include_str!("../../data/db/migrations/202602280001_dnd_month_planner.sql");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MonthKey {
@@ -123,7 +124,11 @@ impl DndRepository {
         Ok(())
     }
 
-    pub async fn ensure_month(&self, guild_id: &str, month: MonthKey) -> Result<DndMonth, sqlx::Error> {
+    pub async fn ensure_month(
+        &self,
+        guild_id: &str,
+        month: MonthKey,
+    ) -> Result<DndMonth, sqlx::Error> {
         let now = Utc::now().timestamp();
         let token = uuid::Uuid::new_v4().to_string();
 
@@ -151,7 +156,10 @@ impl DndRepository {
         .await
     }
 
-    pub async fn month_by_access_token(&self, access_token: &str) -> Result<Option<DndMonth>, sqlx::Error> {
+    pub async fn month_by_access_token(
+        &self,
+        access_token: &str,
+    ) -> Result<Option<DndMonth>, sqlx::Error> {
         sqlx::query_as::<_, DndMonth>(
             "SELECT id, guild_id, month, access_token
              FROM dnd_months
@@ -175,7 +183,11 @@ impl DndRepository {
         .await
     }
 
-    pub async fn ensure_participant(&self, month_id: i64, name: &str) -> Result<DndParticipant, sqlx::Error> {
+    pub async fn ensure_participant(
+        &self,
+        month_id: i64,
+        name: &str,
+    ) -> Result<DndParticipant, sqlx::Error> {
         let now = Utc::now().timestamp();
 
         sqlx::query(
@@ -292,7 +304,11 @@ impl DndRepository {
         }
     }
 
-    pub async fn set_day_available(&self, participant_id: i64, date: &str) -> Result<(), sqlx::Error> {
+    pub async fn set_day_available(
+        &self,
+        participant_id: i64,
+        date: &str,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT INTO dnd_availability (participant_id, date, created_at)
              VALUES (?, ?, ?)
@@ -307,7 +323,11 @@ impl DndRepository {
         Ok(())
     }
 
-    pub async fn set_day_unavailable(&self, participant_id: i64, date: &str) -> Result<(), sqlx::Error> {
+    pub async fn set_day_unavailable(
+        &self,
+        participant_id: i64,
+        date: &str,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "DELETE FROM dnd_availability
              WHERE participant_id = ? AND date = ?",
@@ -391,7 +411,10 @@ impl DndRepository {
         })
     }
 
-    pub async fn summary_for_month_id(&self, month_id: i64) -> Result<Vec<RankedDate>, sqlx::Error> {
+    pub async fn summary_for_month_id(
+        &self,
+        month_id: i64,
+    ) -> Result<Vec<RankedDate>, sqlx::Error> {
         sqlx::query_as::<_, RankedDate>(
             "SELECT a.date as date, COUNT(DISTINCT p.id) as count
              FROM dnd_participants p
@@ -423,7 +446,7 @@ impl DndRepository {
 mod tests {
     use chrono::NaiveDate;
 
-    use super::{is_read_only, DndRepository, MonthKey};
+    use super::{DndRepository, MonthKey, is_read_only};
 
     #[test]
     fn month_parses_case_insensitive() {
@@ -507,14 +530,16 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(repo
-            .validate_login_code(participant.id, &code)
-            .await
-            .unwrap());
-        assert!(repo
-            .validate_login_code(participant.id, &code)
-            .await
-            .unwrap());
+        assert!(
+            repo.validate_login_code(participant.id, &code)
+                .await
+                .unwrap()
+        );
+        assert!(
+            repo.validate_login_code(participant.id, &code)
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -526,10 +551,12 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(!repo
-            .validate_login_code(participant.id, &code)
-            .await
-            .unwrap());
+        assert!(
+            !repo
+                .validate_login_code(participant.id, &code)
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -554,7 +581,10 @@ mod tests {
     #[tokio::test]
     async fn results_rank_by_count_then_date() {
         let repo = seeded_ranking_repo().await;
-        let top = repo.top_dates_for_month("123", MonthKey::March, 2).await.unwrap();
+        let top = repo
+            .top_dates_for_month("123", MonthKey::March, 2)
+            .await
+            .unwrap();
 
         assert_eq!(top[0].date, "2026-03-12");
         assert_eq!(top[0].count, 3);

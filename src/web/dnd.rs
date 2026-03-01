@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::Html,
-    Json,
 };
 use chrono::Local;
 use serde::{Deserialize, Serialize};
 
-use crate::data::dnd::{is_read_only, DndRepository, MonthKey, RankedDate};
+use crate::data::dnd::{DndRepository, MonthKey, RankedDate, is_read_only};
 
 #[derive(Clone)]
 pub struct DndWebState {
@@ -70,7 +70,10 @@ pub fn router(state: DndWebState) -> axum::Router {
     axum::Router::new()
         .route("/dnd/{month_token}", axum::routing::get(dnd_page))
         .route("/api/dnd/login", axum::routing::post(login))
-        .route("/api/dnd/availability", axum::routing::patch(patch_availability))
+        .route(
+            "/api/dnd/availability",
+            axum::routing::patch(patch_availability),
+        )
         .route("/api/dnd/summary", axum::routing::get(summary))
         .with_state(state)
 }
@@ -96,7 +99,10 @@ pub async fn login(
         .participant_by_month_and_name(month.id, &req.name)
         .await
         .map_err(internal_error)?
-        .ok_or((StatusCode::UNAUTHORIZED, "Unknown name for this month".to_string()))?;
+        .ok_or((
+            StatusCode::UNAUTHORIZED,
+            "Unknown name for this month".to_string(),
+        ))?;
 
     let valid = state
         .dnd
@@ -104,7 +110,10 @@ pub async fn login(
         .await
         .map_err(internal_error)?;
     if !valid {
-        return Err((StatusCode::UNAUTHORIZED, "Invalid or expired login code".to_string()));
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "Invalid or expired login code".to_string(),
+        ));
     }
 
     let selected_dates = state
@@ -216,7 +225,9 @@ mod tests {
             .unwrap();
         let repo = DndRepository::new(pool);
         repo.init_for_tests().await.unwrap();
-        DndWebState { dnd: Arc::new(repo) }
+        DndWebState {
+            dnd: Arc::new(repo),
+        }
     }
 
     #[tokio::test]

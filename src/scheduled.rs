@@ -8,7 +8,7 @@ use log::{error, info, warn};
 use poise::serenity_prelude as serenity;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 pub async fn spawn_scheduled_tasks(
     ctx: serenity::Context,

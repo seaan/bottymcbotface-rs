@@ -17,10 +17,10 @@ pub async fn handle_event(
     );
 
     // Match on the event type
-    if let serenity::FullEvent::Message { new_message } = event {
-        if let Err(why) = handle_message_event(ctx, new_message, data).await {
-            error!("Failed to handle message: {:?}", why);
-        }
+    if let serenity::FullEvent::Message { new_message } = event
+        && let Err(why) = handle_message_event(ctx, new_message, data).await
+    {
+        error!("Failed to handle message: {:?}", why);
     }
     Ok(())
 }

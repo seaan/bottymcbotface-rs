@@ -351,15 +351,14 @@ async fn count_current_reactions_across_channels(
                         warn!("Failed to search channel {channel_id}: {:#?}", why);
                     }
                     Ok(reactions) => {
-                        if let Some(reacted_messages) = reactions {
-                            if !reacted_messages.is_empty() {
+                        if let Some(reacted_messages) = reactions
+                            && !reacted_messages.is_empty() {
                                 debug!("Adding {:?} messages from {channel_id} to reacted_messages_per_channel", reacted_messages.len());
                                 reacted_messages_per_channel
                                     .lock()
                                     .await
                                     .insert(channel_id, reacted_messages);
                             }
-                        }
                     }
                 }
             })

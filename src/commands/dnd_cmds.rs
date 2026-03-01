@@ -1,4 +1,4 @@
-use crate::{data::dnd::MonthKey, Context, Error};
+use crate::{Context, Error, data::dnd::MonthKey};
 use chrono::{Duration, Local};
 
 #[poise::command(slash_command, subcommands("submit", "status", "results"))]
@@ -36,7 +36,8 @@ pub async fn submit(
     let guild_id = match ctx.guild_id() {
         Some(id) => id.get().to_string(),
         None => {
-            ctx.reply("This command can only be used in a server.").await?;
+            ctx.reply("This command can only be used in a server.")
+                .await?;
             return Ok(());
         }
     };
@@ -93,7 +94,8 @@ pub async fn status(
     let guild_id = match ctx.guild_id() {
         Some(id) => id.get().to_string(),
         None => {
-            ctx.reply("This command can only be used in a server.").await?;
+            ctx.reply("This command can only be used in a server.")
+                .await?;
             return Ok(());
         }
     };
@@ -129,7 +131,8 @@ pub async fn results(
     let guild_id = match ctx.guild_id() {
         Some(id) => id.get().to_string(),
         None => {
-            ctx.reply("This command can only be used in a server.").await?;
+            ctx.reply("This command can only be used in a server.")
+                .await?;
             return Ok(());
         }
     };
