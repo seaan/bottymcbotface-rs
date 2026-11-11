@@ -1,0 +1,61 @@
+#!/bin/bash
+# Pi auto-updater: polls GitHub Releases and self-updates bottymcbotface-rs if a new version is available.
+# Designed to be run as a systemd oneshot service (output captured by journal).
+
+set -euo pipefail
+
+readonly RELEASE_DIR="/home/pi/bot/release"
+readonly BINARY="${RELEASE_DIR}/bottymcbotface-rs"
+readonly VERSION_FILE="${RELEASE_DIR}/version"
+readonly REPO="seaan/bottymcbotface-rs"
+readonly ASSET_NAME="bottymcbotface-rs-aarch64"
+
+current_version=""
+if [[ -f "${VERSION_FILE}" ]]; then
+    current_version="$(cat "${VERSION_FILE}")"
+fi
+
+echo "Current version: ${current_version:-<none>}"
+echo "Fetching latest release info from GitHub..."
+
+latest_tag="$(gh api "repos/${REPO}/releases/latest" --jq '.tag_name')"
+
+if [[ -z "${latest_tag}" ]]; then
+    echo "ERROR: Could not parse tag_name from GitHub API response" >&2
+    exit 1
+fi
+
+echo "Latest release: ${latest_tag}"
+
+if [[ "${current_version}" == "${latest_tag}" ]]; then
+    echo "Already up to date (${latest_tag}). Nothing to do."
+    exit 0
+fi
+
+echo "Downloading ${ASSET_NAME} from release ${latest_tag}..."
+
+tmp_binary="$(mktemp "${RELEASE_DIR}/bottymcbotface-rs.tmp.XXXXXX")"
+trap 'rm -f "${tmp_binary}"' EXIT
+
+gh release download "${latest_tag}" -R "${REPO}" -p "${ASSET_NAME}" -O "${tmp_binary}" --clobber
+
+if [[ ! -s "${tmp_binary}" ]]; then
+    echo "ERROR: Downloaded file is empty" >&2
+    exit 1
+fi
+
+chmod +x "${tmp_binary}"
+
+echo "Stopping bottymcbotface service..."
+sudo /bin/systemctl stop bottymcbotface
+
+echo "Installing new binary..."
+mv "${tmp_binary}" "${BINARY}"
+trap - EXIT  # binary is in place, don't clean it up on exit
+
+echo "${latest_tag}" > "${VERSION_FILE}"
+
+echo "Starting bottymcbotface service..."
+sudo /bin/systemctl start bottymcbotface
+
+echo "Update complete: ${current_version:-<none>} -> ${latest_tag}"

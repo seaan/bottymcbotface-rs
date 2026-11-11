@@ -1,0 +1,19 @@
+[Unit]
+Description=BottyMcBotface Discord bot
+After=network.target
+ConditionPathExists=/home/pi/bot/release/bottymcbotface-rs
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=60
+
+User=bot
+Group=bot
+
+WorkingDirectory=/home/pi/bot/release
+EnvironmentFile=/home/pi/bot/release/.env
+ExecStart=/home/pi/bot/release/bottymcbotface-rs
+
+[Install]
+WantedBy=multi-user.target

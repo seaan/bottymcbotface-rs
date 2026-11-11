@@ -25,10 +25,10 @@ pub async fn spawn_scheduled_tasks(
     tokio::spawn(search_new_bestof_task(ctx.clone(), bestof.clone()));
 
     // Spawn the persistent database update task
-    tokio::spawn(persistent_database_update_task(db, bestof.clone()));
+    tokio::spawn(persistent_database_update_task(db.clone(), bestof.clone()));
 
     // Spawn the daily bestof posting task
-    tokio::spawn(daily_bestof_task(ctx.clone(), bestof));
+    tokio::spawn(daily_bestof_task(ctx.clone(), db, bestof));
 
     // Spawn the daily quote posting task
     tokio::spawn(daily_quotes_task(ctx, quotes));
@@ -46,7 +46,11 @@ async fn load_from_database(
         .await
 }
 
-async fn daily_bestof_task(ctx: serenity::Context, bestof: Arc<Mutex<BestOf>>) {
+async fn daily_bestof_task(
+    ctx: serenity::Context,
+    db: Arc<Mutex<BotDatabase>>,
+    bestof: Arc<Mutex<BestOf>>,
+) {
     loop {
         // Calculate the duration until the next 15:00 UTC
         let now = Utc::now();
@@ -69,7 +73,7 @@ async fn daily_bestof_task(ctx: serenity::Context, bestof: Arc<Mutex<BestOf>>) {
         sleep(sleep_duration).await;
 
         // Post the daily bestof
-        if let Err(why) = post_daily_bestof(&ctx, &bestof).await {
+        if let Err(why) = post_daily_bestof(&ctx, &db, &bestof).await {
             warn!("Failed to post daily bestof: {:?}", why);
         }
     }
@@ -130,17 +134,36 @@ async fn persistent_database_update_task(db: Arc<Mutex<BotDatabase>>, bestof: Ar
 
 async fn post_daily_bestof(
     ctx: &serenity::Context,
+    db: &Arc<Mutex<BotDatabase>>,
     bestof: &Arc<Mutex<BestOf>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let update_channel = serenity::ChannelId::new(get_update_channel_id());
-    let bestof_unlocked = bestof.lock().await;
+    let now = Utc::now();
+    let (picked, match_kind) = {
+        let bestof_unlocked = bestof.lock().await;
+        bestof_unlocked
+            .pick_daily_bestof_at(now)
+            .ok_or("No messages available")?
+    };
 
-    let embed = bestof_unlocked.get_random_bestof_embed().await?;
+    let embed = picked.create_embed()?;
     let msg = serenity::CreateMessage::new()
         .embed(embed)
-        .content(String::from("*Here's your daily bestof:*"));
+        .content(String::from(match_kind.prelude()));
 
     update_channel.send_message(&ctx.http, msg).await?;
+
+    let mut bestof_unlocked = bestof.lock().await;
+    let db_unlocked = db.lock().await;
+    if let Err(why) = bestof_unlocked
+        .mark_posted_at(picked.id, now, &db_unlocked)
+        .await
+    {
+        warn!(
+            "Failed to record last_posted_at for message {}: {:?}",
+            picked.id, why
+        );
+    }
 
     Ok(())
 }

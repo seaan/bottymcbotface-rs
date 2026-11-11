@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::data::db;
 
-use sqlx::{FromRow, Pool, Sqlite};
+use sqlx::FromRow;
 use tokio::sync::Mutex;
 
 use super::db::BotDatabase;
@@ -35,20 +35,6 @@ impl Requests {
         Requests { db }
     }
 
-    async fn init(&self, conn: &Pool<Sqlite>) -> Result<(), sqlx::Error> {
-        let query = r#"
-            CREATE TABLE IF NOT EXISTS requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                request TEXT NOT NULL,
-                user TEXT NOT NULL,
-                votes INTEGER DEFAULT 0
-            )
-        "#;
-        sqlx::query(query).execute(conn).await?;
-
-        Ok(())
-    }
-
     /// Return a vector of all active requests.
     pub async fn get_requests(&self) -> Result<Vec<FeatureRequest>, sqlx::Error> {
         let db_lock = self.db.lock().await;
@@ -71,12 +57,10 @@ impl Requests {
         let db_lock = self.db.lock().await;
         let conn = db_lock.get_conn();
 
-        self.init(conn).await?;
-
         let query = "INSERT INTO requests (request, user, votes) VALUES (?, ?, 0)";
         sqlx::query(query)
-            .bind(req.clone())
-            .bind(user.clone())
+            .bind(req)
+            .bind(user)
             .execute(conn)
             .await?;
 
@@ -100,8 +84,10 @@ impl Requests {
                 .fetch_one(conn)
                 .await?;
 
-        let query = format!("DELETE FROM requests WHERE id = {}", id);
-        sqlx::query(&query).execute(conn).await?;
+        sqlx::query("DELETE FROM requests WHERE id = ?")
+            .bind(id)
+            .execute(conn)
+            .await?;
 
         Ok(read_req)
     }

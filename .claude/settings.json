@@ -1,0 +1,58 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo test:*)",
+      "Bash(cargo fmt)",
+      "Bash(git commit:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo clippy)"
+    ],
+    "additionalDirectories": [
+      "./docs/plans"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'echo \"$CLAUDE_TOOL_INPUT\" | grep -q \"\\.rs\\\"\" && cargo clippy --quiet 2>&1 | head -20 || true'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'echo \"$CLAUDE_TOOL_INPUT\" | grep -q \"\\.rs\\\"\" && cargo fmt --quiet 2>&1 || true'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'echo \"$CLAUDE_TOOL_INPUT\" | grep -q \"db\\.rs\\\"\" && cargo test --bin bottymcbotface-rs data::db:: -- --test-threads=1 2>&1 | tail -10 || true'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'echo \"$CLAUDE_TOOL_INPUT\" | grep -q \"dnd\\.rs\\\"\" && cargo test --bin bottymcbotface-rs dnd:: 2>&1 | tail -15 || true'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'echo \"$CLAUDE_TOOL_INPUT\" | grep -q \"dnd_cmds\\.rs\\\"\" && cargo test --bin bottymcbotface-rs commands::dnd_cmds:: 2>&1 | tail -10 || true'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'echo \"$CLAUDE_TOOL_INPUT\" | grep -qE \"\\.env\\\"\" && echo \"Blocked: .env contains live secrets (DISCORD_TOKEN, GH_TOKEN). Edit manually.\" >&2 && exit 1 || true'"
+          },
+          {
+            "type": "command",
+            "command": "bash -c 'echo \"$CLAUDE_TOOL_INPUT\" | grep -q \"make-release-to-pi\" && echo \"WARNING: Editing make-release-to-pi — this script touches the live Pi DB and restarts the bot. Confirm changes are intentional.\" >&2 || true'"
+          }
+        ]
+      }
+    ]
+  }
+}

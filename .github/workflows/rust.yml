@@ -2,9 +2,10 @@ name: Rust
 
 on:
   push:
-    branches: [ "main", "test-cicd" ]
-  release:
-    types: [created]
+    branches: ["main"]
+
+permissions:
+  contents: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -12,64 +13,85 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: true
 
     steps:
-    - uses: actions/checkout@v5
-    - run: rustup toolchain install stable --profile minimal\
-    - name: Rust Cache
-      uses: Swatinem/rust-cache@v2.8.0
-    - name: Compile
-      id: compile
-      uses: rust-build/rust-build.action@v1.4.5
-      env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        RUSTTARGET: x86_64-unknown-linux-musl
-        UPLOAD_MODE: none
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: Binary
-        path: |
-          ${{ steps.compile.outputs.BUILT_ARCHIVE }}
-          ${{ steps.compile.outputs.BUILT_CHECKSUM }}
-        if-no-files-found: error
+      - uses: actions/checkout@v4
+
+      - name: Install musl target
+        run: rustup target add x86_64-unknown-linux-musl
+
+      - name: Install musl tools
+        run: sudo apt-get install -y musl-tools
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build static binary
+        run: cargo build --release --target x86_64-unknown-linux-musl
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bottymcbotface-rs
+          path: target/x86_64-unknown-linux-musl/release/bottymcbotface-rs
+          if-no-files-found: error
+
+  build-aarch64:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install aarch64 musl target
+        run: rustup target add aarch64-unknown-linux-musl
+
+      - name: Install cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: aarch64-musl
+
+      - name: Build aarch64 musl binary
+        run: cross build --release --target aarch64-unknown-linux-musl
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bottymcbotface-rs-aarch64
+          path: target/aarch64-unknown-linux-musl/release/bottymcbotface-rs
+          if-no-files-found: error
 
   release:
-    needs: build
+    needs: [build, build-aarch64]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
     steps:
-      - uses: actions/checkout@v5
-      - name: Download artifact
+      - name: Download x86_64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: Binary
+          name: bottymcbotface-rs
           path: ./release
-      - name: List files in release directory
-        run: ls -l ./release
-      - name: Unzip artifact
-        run: |
-          unzip -o ./release/bottymcbotface-rs_null_x86_64-unknown-linux-musl.zip -d ./release
-        shell: bash
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+
+      - name: Download aarch64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bottymcbotface-rs-aarch64
+          path: ./release-aarch64
+
+      - name: Rename aarch64 binary
+        run: mv ./release-aarch64/bottymcbotface-rs ./release/bottymcbotface-rs-aarch64
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}
-          release_name: Release v${{ github.run_number }}
-          draft: false
-          prerelease: false
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
+          name: Release v${{ github.run_number }}
+          files: |
+            ./release/bottymcbotface-rs
+            ./release/bottymcbotface-rs-aarch64
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./release/bottymcbotface-rs
-          asset_name: bottymcbotface-rs
-          asset_content_type: application/octet-stream
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

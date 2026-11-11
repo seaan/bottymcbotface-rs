@@ -1,6 +1,11 @@
 /target
 .env
 data/db/*.db*
+data/db/backups/
+
 .worktrees/
+*.db
 
 docs/plans/*.md
+.claude/settings.local.json
+.claude/settings/settings.local.json

@@ -1,18 +1,286 @@
 #!/bin/bash
 
-set -exuo pipefail
+set -euo pipefail
 shellcheck -x "$0"
 
-readonly TARGET_ARCH=aarch64-unknown-linux-gnu
+readonly TARGET_ARCH=aarch64-unknown-linux-musl
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+readonly PI_RELEASE_DIR="bot/release"
 
-pushd "$HOME"/learning-rust/bottymcbotface-rs
+readonly LOCAL_PROD_DB="${REPO_ROOT}/data/db/production.db"
+readonly LOCAL_DB_BACKUP_DIR="${REPO_ROOT}/data/db/backups"
+readonly PULLED_PI_DB="/tmp/bottymcbotface-production.pi.db"
+readonly MERGED_DB="/tmp/bottymcbotface-production.merged.db"
 
-cross build --release --target ${TARGET_ARCH}
+readonly PI_PROD_DB="${PI_RELEASE_DIR}/data/db/production.db"
+readonly PI_DB_BACKUP_DIR="${PI_RELEASE_DIR}/data/db/backups"
+
+require_cmd() {
+    command -v "$1" >/dev/null 2>&1 || {
+        echo "Missing required command: $1" >&2
+        exit 1
+    }
+}
+
+has_local_table() {
+    local table_name="$1"
+    [[ -f "${LOCAL_PROD_DB}" ]] || return 1
+    [[ "$(sqlite3 "${LOCAL_PROD_DB}" "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='${table_name}';")" == "1" ]]
+}
+
+for tool in cross rsync ssh sqlite3; do
+    require_cmd "${tool}"
+done
+
+timestamp="$(date +%Y%m%d-%H%M%S)"
+
+pushd "${REPO_ROOT}"
+
+mkdir -p "$(dirname "${LOCAL_PROD_DB}")" "${LOCAL_DB_BACKUP_DIR}"
+
+cross build --release --target "${TARGET_ARCH}"
+
+if [[ -f "${LOCAL_PROD_DB}" ]]; then
+    cp "${LOCAL_PROD_DB}" "${LOCAL_DB_BACKUP_DIR}/production.${timestamp}.local.db"
+fi
+
+# shellcheck disable=SC2029
+ssh pi "
+set -euo pipefail
+mkdir -p '${PI_RELEASE_DIR}/data/db' '${PI_DB_BACKUP_DIR}' '${PI_RELEASE_DIR}/src/web/assets'
+if [[ -f '${PI_PROD_DB}' ]]; then
+    cp '${PI_PROD_DB}' '${PI_DB_BACKUP_DIR}/production.${timestamp}.pi.db'
+fi
+"
+
+rm -f "${PULLED_PI_DB}" "${MERGED_DB}"
+if rsync -azvhP "pi:${PI_PROD_DB}" "${PULLED_PI_DB}"; then
+    cp "${PULLED_PI_DB}" "${MERGED_DB}"
+elif [[ -f "${LOCAL_PROD_DB}" ]]; then
+    cp "${LOCAL_PROD_DB}" "${MERGED_DB}"
+else
+    sqlite3 "${MERGED_DB}" "VACUUM;"
+fi
+
+if [[ -f "${LOCAL_PROD_DB}" ]]; then
+    merge_sql="$(mktemp)"
+    cat > "${merge_sql}" <<EOF
+PRAGMA foreign_keys = ON;
+ATTACH DATABASE '${LOCAL_PROD_DB}' AS local;
+
+CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER NOT NULL PRIMARY KEY,
+    author TEXT,
+    content TEXT,
+    link TEXT,
+    channel TEXT,
+    count BIGINT,
+    timestamp FLOAT,
+    image TEXT,
+    last_posted_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS ix_messages_4f0aa52d656a3d75 ON messages (link);
+
+CREATE TABLE IF NOT EXISTS quotes (
+    id INTEGER NOT NULL PRIMARY KEY,
+    quote TEXT,
+    author TEXT
+);
+
+CREATE TABLE IF NOT EXISTS requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request TEXT NOT NULL,
+    user TEXT NOT NULL,
+    votes INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS dnd_months (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    month TEXT NOT NULL,
+    title TEXT,
+    access_token TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL,
+    UNIQUE(guild_id, month)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dnd_months_guild_id ON dnd_months(guild_id);
+
+CREATE TABLE IF NOT EXISTS dnd_participants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    month_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    edit_token TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(month_id, name),
+    FOREIGN KEY(month_id) REFERENCES dnd_months(id)
+);
+
+CREATE TABLE IF NOT EXISTS dnd_login_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    participant_id INTEGER NOT NULL,
+    code TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    used_count INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(participant_id, code),
+    FOREIGN KEY(participant_id) REFERENCES dnd_participants(id)
+);
+
+CREATE TABLE IF NOT EXISTS dnd_availability (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    participant_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE(participant_id, date),
+    FOREIGN KEY(participant_id) REFERENCES dnd_participants(id)
+);
+EOF
+
+    if has_local_table "messages"; then
+        cat >> "${merge_sql}" <<'EOF'
+INSERT INTO main.messages (id, author, content, link, channel, count, timestamp, image)
+SELECT id, author, content, link, channel, count, timestamp, image
+FROM local.messages
+WHERE true
+ON CONFLICT(id) DO UPDATE SET
+  author=excluded.author,
+  content=excluded.content,
+  link=excluded.link,
+  channel=excluded.channel,
+  count=excluded.count,
+  timestamp=excluded.timestamp,
+  image=excluded.image
+WHERE excluded.count > main.messages.count;
+EOF
+    fi
+
+    if has_local_table "quotes"; then
+        cat >> "${merge_sql}" <<'EOF'
+INSERT INTO main.quotes (id, quote, author)
+SELECT id, quote, author
+FROM local.quotes
+WHERE true
+ON CONFLICT(id) DO NOTHING;
+EOF
+    fi
+
+    if has_local_table "requests"; then
+        cat >> "${merge_sql}" <<'EOF'
+INSERT INTO main.requests (id, request, user, votes)
+SELECT id, request, user, votes
+FROM local.requests
+WHERE true
+ON CONFLICT(id) DO UPDATE SET
+  request=excluded.request,
+  user=excluded.user,
+  votes=excluded.votes
+WHERE excluded.votes > main.requests.votes;
+EOF
+    fi
+
+    if has_local_table "dnd_months"; then
+        cat >> "${merge_sql}" <<'EOF'
+INSERT INTO main.dnd_months (id, guild_id, month, title, access_token, created_at)
+SELECT id, guild_id, month, title, access_token, created_at
+FROM local.dnd_months
+WHERE true
+ON CONFLICT(guild_id, month) DO NOTHING;
+EOF
+    fi
+
+    if has_local_table "dnd_participants"; then
+        cat >> "${merge_sql}" <<'EOF'
+INSERT INTO main.dnd_participants (id, month_id, name, edit_token, created_at, updated_at)
+SELECT id, month_id, name, edit_token, created_at, updated_at
+FROM local.dnd_participants
+WHERE true
+ON CONFLICT(month_id, name) DO UPDATE SET
+  edit_token=excluded.edit_token,
+  created_at=excluded.created_at,
+  updated_at=excluded.updated_at
+WHERE excluded.updated_at > main.dnd_participants.updated_at;
+EOF
+    fi
+
+    if has_local_table "dnd_login_codes"; then
+        cat >> "${merge_sql}" <<'EOF'
+INSERT INTO main.dnd_login_codes (id, participant_id, code, expires_at, created_at, used_count)
+SELECT id, participant_id, code, expires_at, created_at, used_count
+FROM local.dnd_login_codes
+WHERE true
+ON CONFLICT(participant_id, code) DO UPDATE SET
+  expires_at=excluded.expires_at,
+  created_at=excluded.created_at,
+  used_count=excluded.used_count
+WHERE excluded.used_count > main.dnd_login_codes.used_count;
+EOF
+    fi
+
+    if has_local_table "dnd_availability"; then
+        cat >> "${merge_sql}" <<'EOF'
+INSERT INTO main.dnd_availability (id, participant_id, date, created_at)
+SELECT id, participant_id, date, created_at
+FROM local.dnd_availability
+WHERE true
+ON CONFLICT(participant_id, date) DO NOTHING;
+EOF
+    fi
+
+    cat >> "${merge_sql}" <<'EOF'
+DETACH DATABASE local;
+EOF
+
+    sqlite3 "${MERGED_DB}" < "${merge_sql}"
+    rm -f "${merge_sql}"
+fi
+
+if [[ "$(sqlite3 "${MERGED_DB}" "PRAGMA quick_check;")" != "ok" ]]; then
+    echo "Database quick_check failed" >&2
+    exit 1
+fi
+
+rsync -azvhP "${MERGED_DB}" "pi:${PI_PROD_DB}"
+# shellcheck disable=SC2029
+ssh pi "sudo chown bot:bot '${PI_PROD_DB}'"
 
 rsync -azvhP \
-    ./target/${TARGET_ARCH}/release/bottymcbotface-rs \
-    pi:bot/release/
+    "./data/k2so.txt" \
+    "pi:${PI_RELEASE_DIR}/data/"
 
-ssh -t pi "sudo systemctl restart bottymcbotface ; systemctl status bottymcbotface"
+rsync -azvhP \
+    "./src/web/assets/" \
+    "pi:${PI_RELEASE_DIR}/src/web/assets/"
+
+rsync -azvhP \
+    "./target/${TARGET_ARCH}/release/bottymcbotface-rs" \
+    "pi:${PI_RELEASE_DIR}/"
+
+rsync -azvhP \
+    "./bottymcbotface.service" \
+    "./bottymcbotface-update.service" \
+    "./bottymcbotface-update.timer" \
+    "pi:${PI_RELEASE_DIR}/"
+
+rsync -azvhP \
+    "./scripts/pi-autoupdate" \
+    "pi:${PI_RELEASE_DIR}/"
+
+ssh -t pi "
+set -euo pipefail
+sudo cp '${PI_RELEASE_DIR}/bottymcbotface.service' /etc/systemd/system/bottymcbotface.service
+sudo cp '${PI_RELEASE_DIR}/bottymcbotface-update.service' /etc/systemd/system/bottymcbotface-update.service
+sudo cp '${PI_RELEASE_DIR}/bottymcbotface-update.timer' /etc/systemd/system/bottymcbotface-update.timer
+chmod +x '${PI_RELEASE_DIR}/pi-autoupdate'
+sudo chown -R bot:bot '${PI_RELEASE_DIR}/data' '${PI_RELEASE_DIR}/src'
+sudo systemctl daemon-reload
+sudo systemctl restart bottymcbotface
+sudo systemctl enable --now bottymcbotface-update.timer
+systemctl status bottymcbotface --no-pager --lines=0
+systemctl list-timers bottymcbotface-update.timer --no-pager
+"
 
 popd

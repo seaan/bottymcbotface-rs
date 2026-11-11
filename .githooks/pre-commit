@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+mapfile -t staged_files < <(git diff --cached --name-only --diff-filter=ACMR)
+
+if [ "${#staged_files[@]}" -eq 0 ]; then
+  exit 0
+fi
+
+rust_changed=0
+cargo_changed=0
+
+for file in "${staged_files[@]}"; do
+  case "$file" in
+    *.rs)
+      rust_changed=1
+      ;;
+    Cargo.toml|Cargo.lock)
+      cargo_changed=1
+      ;;
+  esac
+done
+
+if [ "$rust_changed" -eq 0 ] && [ "$cargo_changed" -eq 0 ]; then
+  echo "pre-commit: no staged Rust/Cargo files; skipping checks."
+  exit 0
+fi
+
+echo "pre-commit: running checks for staged Rust/Cargo changes..."
+
+echo "pre-commit: cargo fmt --check"
+cargo fmt --check
+
+echo "pre-commit: cargo clippy --all-targets -- -D warnings"
+cargo clippy --all-targets -- -D warnings
+
+echo "pre-commit: cargo test -- --test-threads=1"
+cargo test -- --test-threads=1

@@ -88,6 +88,7 @@ pub struct DndRepository {
 #[derive(FromRow, Debug, Clone)]
 pub struct DndMonth {
     pub id: i64,
+    #[allow(dead_code)]
     pub guild_id: String,
     pub month: String,
     pub access_token: String,
@@ -97,6 +98,7 @@ pub struct DndMonth {
 pub struct DndParticipant {
     pub id: i64,
     pub month_id: i64,
+    #[allow(dead_code)]
     pub name: String,
     pub edit_token: String,
 }

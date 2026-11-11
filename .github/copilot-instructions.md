@@ -1,47 +1,31 @@
 # Copilot Instructions for AI Coding Agents
 
 ## Project Overview
-This is a Rust-based Discord bot. The codebase is organized for modularity and maintainability, with clear separation of commands, events, and data management. The main entry point is `src/main.rs`.
+This is a Rust-based Discord bot (`bottymcbotface-rs`) built with `poise` over `serenity`, `tokio`, `sqlx` (SQLite), and `axum`. It runs a Discord bot alongside an Axum HTTP server for D&D availability scheduling.
 
 ## Architecture & Major Components
-- **src/commands/**: Command handlers, grouped by feature (e.g., `bestof_cmds.rs`, `quote_cmds.rs`).
-- **src/events/**: Event listeners (e.g., `mentionme.rs`).
-- **src/data/**: Data access and persistence logic (e.g., `db.rs`, `quotes.rs`).
-- **src/constants.rs**: Centralized constants for configuration and shared values.
-- **src/scheduled.rs**: Scheduled/background tasks.
-- **data/**: External data files (e.g., `k2so.txt`).
+- **`src/main.rs`**: Entry point, Poise framework setup, command registration, database migration trigger, scheduled task spawning, and Axum server startup.
+- **`src/commands/`**: Slash and prefix command handlers grouped by domain (`bestof_cmds.rs`, `quote_cmds.rs`, `request_cmds.rs`, `gamenight_cmds.rs`, `dnd_cmds.rs`).
+- **`src/events/`**: Event listeners (`mentionme.rs` responds to @mentions with quotes from `data/k2so.txt`).
+- **`src/data/`**: SQLite persistence (`db.rs`) and domain repositories (`bestof.rs`, `quotes.rs`, `requests.rs`, `dnd.rs`).
+  - `database_path_from_env()` in `src/data/db.rs` selects `data/db/production.db` when `BOT_ENV=production` and `data/db/dev.db` otherwise.
+  - Idempotent schema initialization (`BASE_SCHEMA_SQL` in `src/data/db.rs`) runs automatically on startup.
+- **`src/web/`**: Axum HTTP server (`mod.rs`, `dnd.rs`) serving the D&D availability calendar UI and JSON API (`src/web/assets/`).
+- **`src/scheduled.rs`**: Background tasks for daily best-of, daily quote, reaction scanning, and SQLite sync.
+- **`src/constants.rs`**: Channel routing constants (`get_update_channel_id()` switches on `BOT_ENV`).
+- **`scripts/`**:
+  - `scripts/install-git-hooks` — configures `.githooks/pre-commit` (`cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`).
+  - `scripts/make-release-to-pi` — cross-compiles `aarch64-unknown-linux-musl`, backs up and merges `production.db`, and deploys to the Raspberry Pi.
+  - `scripts/pi-autoupdate` — systemd-driven auto-updater polling GitHub Releases.
 
 ## Developer Workflows
-- **Build**: Use `cargo build`.
-- **Run**: Use `cargo run` to start the bot.
-- **Release**: See `scripts/make-release-to-pi` for deployment to Raspberry Pi.
-- **No standard test suite detected**: If tests are added, document their location and invocation.
+- **Build**: `cargo build`
+- **Format**: `cargo fmt`
+- **Lint**: `cargo clippy --all-targets -- -D warnings`
+- **Test**: `cargo test -- --test-threads=1`
+- **Deploy to Pi**: `./scripts/make-release-to-pi`
 
-## Project-Specific Conventions
-- **Command/Event Separation**: Each command/event type has its own file for clarity and isolation.
-- **Feature Grouping**: Related commands/events are grouped in subdirectories (e.g., `commands/`, `events/`, `data/`).
-- **Data Files**: External data is stored in the `data/` directory, loaded as needed.
-- **Constants**: Use `src/constants.rs` for shared values.
-
-## Integration Points & Dependencies
-- **Discord API (Serenity crate)**: The bot interacts with Discord using the `serenity` Rust crate. Understanding Serenity's event, command, and context models is crucial for working with this codebase (see `main.rs` for setup and registration).
-- **External Scripts**: Deployment uses shell scripts in `scripts/`.
-- **No database detected**: Data is likely file-based (see `src/data/`).
-
-## Examples
-- To add a new command: Create a file in `src/commands/`, implement the handler, and register it in `main.rs`.
-- To add a new event: Add a file in `src/events/` and hook it up in `main.rs`.
-- To persist new data: Extend the appropriate module in `src/data/` and update data files in `data/`.
-
-## Key Files
-- `src/main.rs`: Entry point, bot setup, command/event registration.
-- `src/commands/`: Command handlers.
-- `src/events/`: Event listeners.
-- `src/data/`: Data management.
-- `src/constants.rs`: Shared constants.
-- `scripts/make-release-to-pi`: Deployment script.
-- `data/`: External data files.
-
----
-
-If any conventions or workflows are unclear or missing, please provide feedback to improve these instructions.
+## Conventions & Safety Rules
+- Always use parameterized SQL queries (`sqlx::query` / `sqlx::query_as` with `.bind(...)`), never `format!(...)` with user input.
+- Use `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` for schema additions in `src/data/db.rs`. Do not edit already-applied migration files in `data/db/migrations/`.
+- Keep `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` clean before committing.

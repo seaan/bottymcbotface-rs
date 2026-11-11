@@ -44,17 +44,21 @@ impl Quotes {
         let db_lock = self.db.lock().await;
         let conn = db_lock.get_conn();
 
-        let query = match author {
-            Some(author) => format!(
-                "SELECT * FROM quotes WHERE author = '{}' ORDER BY RANDOM() LIMIT 1",
-                author
-            ),
-            None => "SELECT * FROM quotes ORDER BY RANDOM() LIMIT 1".to_string(),
+        let quote = match author {
+            Some(author) => {
+                sqlx::query_as::<_, QuoteMessage>(
+                    "SELECT * FROM quotes WHERE author = ? ORDER BY RANDOM() LIMIT 1",
+                )
+                .bind(author)
+                .fetch_one(conn)
+                .await?
+            }
+            None => {
+                sqlx::query_as::<_, QuoteMessage>("SELECT * FROM quotes ORDER BY RANDOM() LIMIT 1")
+                    .fetch_one(conn)
+                    .await?
+            }
         };
-
-        let quote = sqlx::query_as::<_, QuoteMessage>(&query)
-            .fetch_one(conn)
-            .await?;
 
         Ok(quote)
     }

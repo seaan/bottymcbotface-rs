@@ -1,0 +1,13 @@
+[Unit]
+Description=BottyMcBotface auto-updater
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=bot
+Group=bot
+EnvironmentFile=/home/pi/bot/release/.env
+ExecStart=/home/pi/bot/release/pi-autoupdate
+StandardOutput=journal
+StandardError=journal
