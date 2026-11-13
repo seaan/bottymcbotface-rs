@@ -158,6 +158,7 @@ impl BotDatabase {
 
         // Incremental migrations for existing databases (no-op if column already exists)
         let _ = sqlx::query("ALTER TABLE messages ADD COLUMN last_posted_at TEXT")
+            .persistent(false)
             .execute(&self.conn)
             .await;
 
@@ -170,23 +171,6 @@ impl BotDatabase {
         }
 
         Ok(())
-    }
-
-    /// Load all rows from any given table.
-    pub async fn load_all_from_table<T>(
-        &self,
-        table_name: String,
-    ) -> Result<Vec<T>, Box<dyn std::error::Error>>
-    where
-        T: for<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> + Send + Unpin,
-    {
-        let query = format!("SELECT * FROM {}", table_name);
-
-        let rows = sqlx::query_as::<_, T>(&query)
-            .fetch_all(&self.conn) // No mut
-            .await?;
-
-        Ok(rows)
     }
 
     /// Get a reference to the connection pool
@@ -317,5 +301,49 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(last_posted_at.as_deref(), Some("2026-11-11T15:00:00+00:00"));
+    }
+
+    #[tokio::test]
+    async fn load_bestof_from_file_db_after_adding_last_posted_at_column() {
+        let mut dir = std::env::temp_dir();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        dir.push(format!("bottymcbotface-mig-load-{}", nanos));
+        let db_path = dir.join("test.db");
+
+        let mut db = BotDatabase::new_with_path(db_path.to_string_lossy().as_ref());
+        sqlx::query(
+            "CREATE TABLE messages (
+                id INTEGER NOT NULL PRIMARY KEY,
+                author TEXT,
+                content TEXT,
+                link TEXT,
+                channel TEXT,
+                count BIGINT,
+                timestamp FLOAT,
+                image TEXT
+            )",
+        )
+        .execute(db.get_conn())
+        .await
+        .unwrap();
+
+        sqlx::query(
+            "INSERT INTO messages (id, author, content, link, channel, count, timestamp, image)
+             VALUES (1, 'alice', 'hello', 'https://discord.com', 'general', 5, 1700000000.0, NULL)",
+        )
+        .execute(db.get_conn())
+        .await
+        .unwrap();
+
+        db.run_migration().await.unwrap();
+
+        let mut bestof = crate::data::bestof::BestOf::new();
+        bestof.load_from_persisted_db(&mut db).await.unwrap();
+        assert!(bestof.pick_daily_bestof_at(chrono::Utc::now()).is_some());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

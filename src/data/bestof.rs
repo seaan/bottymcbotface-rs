@@ -211,13 +211,23 @@ impl BestOf {
         &mut self,
         persist_db: &mut db::BotDatabase,
     ) -> Result<(), Box<dyn Error>> {
-        let messages: Vec<BestOfMessage> = persist_db
-            .load_all_from_table(String::from("messages"))
-            .await?;
+        // Use explicit columns and skip the statement cache so schema migrations
+        // (e.g. ALTER TABLE ADD COLUMN) cannot desync cached SQLite column metadata.
+        let messages: Vec<BestOfMessage> = sqlx::query_as::<_, BestOfMessage>(
+            "SELECT id, author, content, link, channel, count, timestamp, image, last_posted_at FROM messages",
+        )
+        .persistent(false)
+        .fetch_all(persist_db.get_conn())
+        .await?;
 
         for msg in messages {
             self.runtime_db.insert(msg.id, msg);
         }
+
+        info!(
+            "Loaded {} bestof messages from persistent database",
+            self.runtime_db.len()
+        );
 
         Ok(())
     }
