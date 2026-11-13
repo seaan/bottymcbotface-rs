@@ -125,6 +125,12 @@ async fn main() {
                 )
                 .await;
 
+                scheduled::spawn_shutdown_task(
+                    Arc::clone(&data.db),
+                    Arc::clone(&data.bestof),
+                    framework.shard_manager().clone(),
+                );
+
                 let dnd_repo = Arc::clone(&data.dnd);
                 tokio::spawn(async move {
                     if let Err(why) = web::run_server(dnd_repo).await {

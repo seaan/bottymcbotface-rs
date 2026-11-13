@@ -34,6 +34,54 @@ pub async fn spawn_scheduled_tasks(
     tokio::spawn(daily_quotes_task(ctx, quotes));
 }
 
+/// Spawn a task that flushes in-memory bestof state to SQLite on SIGINT/SIGTERM
+/// before shutting down the Discord gateway shards cleanly.
+pub fn spawn_shutdown_task(
+    db: Arc<Mutex<BotDatabase>>,
+    bestof: Arc<Mutex<BestOf>>,
+    shard_manager: Arc<serenity::ShardManager>,
+) {
+    tokio::spawn(async move {
+        wait_for_shutdown_signal().await;
+        info!("Shutdown signal received, persisting bestof data...");
+        if let Err(why) = update_bestof_persisted_db(&db, &bestof).await {
+            warn!("Failed to persist bestof data on shutdown: {:?}", why);
+        } else {
+            info!("Persisted bestof data before shutdown");
+        }
+        shard_manager.shutdown_all().await;
+    });
+}
+
+async fn wait_for_shutdown_signal() {
+    let ctrl_c = async {
+        if let Err(why) = tokio::signal::ctrl_c().await {
+            warn!("Failed to listen for Ctrl+C: {:?}", why);
+        }
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(why) => {
+                warn!("Failed to listen for SIGTERM: {:?}", why);
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {}
+        _ = terminate => {}
+    }
+}
+
 async fn load_from_database(
     db: Arc<Mutex<BotDatabase>>,
     bestof: Arc<Mutex<BestOf>>,
@@ -121,14 +169,14 @@ async fn search_new_bestof_task(ctx: serenity::Context, bestof: Arc<Mutex<BestOf
 }
 
 async fn persistent_database_update_task(db: Arc<Mutex<BotDatabase>>, bestof: Arc<Mutex<BestOf>>) {
+    let sleep_duration = Duration::from_secs(3610);
     loop {
+        info!("Next persistent database update after {:?}", sleep_duration);
+        sleep(sleep_duration).await;
+
         if let Err(why) = update_bestof_persisted_db(&db, &bestof).await {
             warn!("Failed to persist bestof data: {:?}", why);
         }
-
-        let sleep_duration = Duration::from_secs(3610);
-        info!("Next persistent database update after {:?}", sleep_duration);
-        sleep(sleep_duration).await;
     }
 }
 
